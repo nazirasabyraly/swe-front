@@ -9,10 +9,10 @@ Complete every two weeks. Replace the bracketed prompts and repeat entries as ne
 ## Report details
 
 - Team name: [Team name]
-- Reporting period: [August 27, 2026 - September 10, 2026]
-- Submitted by: [Nazira Sabyraly]
-- Current stage: [Discovery]
-- Overall status: [On track]
+- Reporting period: August 27, 2026 - September 10, 2026
+- Submitted by: Nazira Sabyraly
+- Current stage: Discovery
+- Overall status: On track
 
 ### Project links
 
@@ -25,11 +25,11 @@ List all five team members below.
 
 | Full name | Student ID | Email |
 | --- | --- | --- |
+| [Full name] | [Student ID] | nazira.sabyraly@nu.edu.kz |
 | [Full name] | [Student ID] | [Email address] |
 | [Full name] | [Student ID] | [Email address] |
 | [Full name] | [Student ID] | [Email address] |
-| [Full name] | [Student ID] | [Email address] |
-| [Full name] | [Student ID] | [Email address] |
+| [Full name] | [Student ID] | [amina.baizak@nu.edu.kz] |
 
 <div style="page-break-before: always;"></div>
 
