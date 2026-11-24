@@ -19,7 +19,7 @@ describe('CreateEventForm', () => {
     await submit();
 
     expect(onContinue).not.toHaveBeenCalled();
-    expect(screen.getByRole('alert')).toHaveTextContent('Fix 10 fields before previewing');
+    expect(screen.getByRole('alert')).toHaveTextContent('Fix 10 fields to continue');
     for (const message of [
       'Enter an event title.',
       'Enter a description.',

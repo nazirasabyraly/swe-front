@@ -20,11 +20,13 @@ type Stage = 'details' | 'review' | 'done';
 export interface CreateEventWizardProps {
   /** Persists the event. The API isn't wired up yet; the caller decides what this does. */
   onSubmit: (event: CreateEventInput) => Promise<void> | void;
+  /** Called after a successful submit. When omitted, a confirmation is shown in place. */
+  onDone?: (event: CreateEventInput) => void;
   organizerName?: string;
   now?: () => Date;
 }
 
-export function CreateEventWizard({ onSubmit, organizerName, now }: CreateEventWizardProps) {
+export function CreateEventWizard({ onSubmit, onDone, organizerName, now }: CreateEventWizardProps) {
   const [stage, setStage] = useState<Stage>('details');
   const [draft, setDraft] = useState<EventDraft>(emptyEventDraft);
   const [submitting, setSubmitting] = useState(false);
@@ -41,8 +43,10 @@ export function CreateEventWizard({ onSubmit, organizerName, now }: CreateEventW
     setSubmitting(true);
     setSubmitError(null);
     try {
-      await onSubmit(toCreateEventInput(draft));
-      setStage('done');
+      const input = toCreateEventInput(draft);
+      await onSubmit(input);
+      if (onDone) onDone(input);
+      else setStage('done');
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Something went wrong. Try again.');
     } finally {

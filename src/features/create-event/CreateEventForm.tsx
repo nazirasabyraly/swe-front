@@ -42,9 +42,21 @@ interface CreateEventFormProps {
   onContinue: (draft: EventDraft) => void;
   /** Injectable clock, used for "must be in the future" checks. */
   now?: () => Date;
+  submitLabel?: string;
+  /** Overrides the hint under the image picker (e.g. when editing an event that has images). */
+  imagesHint?: string;
+  /** Disables the submit button, e.g. while saving. */
+  submitting?: boolean;
 }
 
-export function CreateEventForm({ initialDraft, onContinue, now = () => new Date() }: CreateEventFormProps) {
+export function CreateEventForm({
+  initialDraft,
+  onContinue,
+  now = () => new Date(),
+  submitLabel = 'Continue to preview',
+  imagesHint = `Optional. Up to ${LIMITS.maxImages} images, 5 MB each. The first image is the cover.`,
+  submitting = false,
+}: CreateEventFormProps) {
   const [draft, setDraft] = useState<EventDraft>(initialDraft);
   const [errors, setErrors] = useState<EventDraftErrors>({});
   const [attempted, setAttempted] = useState(false);
@@ -99,7 +111,7 @@ export function CreateEventForm({ initialDraft, onContinue, now = () => new Date
       {attempted && errorCount > 0 && (
         <div className="notice notice--danger form-summary" role="alert">
           <strong>
-            {errorCount === 1 ? 'Fix 1 field' : `Fix ${errorCount} fields`} before previewing
+            {errorCount === 1 ? 'Fix 1 field' : `Fix ${errorCount} fields`} to continue
           </strong>
           Check the highlighted fields below.
         </div>
@@ -177,7 +189,7 @@ export function CreateEventForm({ initialDraft, onContinue, now = () => new Date
           <FormField
             id={fieldId('images')}
             label="Images"
-            hint={`Optional. Up to ${LIMITS.maxImages} images, 5 MB each. The first image is the cover.`}
+            hint={imagesHint}
             error={errors.images}
             className="form-grid--full"
           >
@@ -383,8 +395,8 @@ export function CreateEventForm({ initialDraft, onContinue, now = () => new Date
       </section>
 
       <div className="form-actions">
-        <button type="submit" className="btn btn--primary">
-          Continue to preview
+        <button type="submit" className="btn btn--primary" disabled={submitting}>
+          {submitLabel}
         </button>
       </div>
     </form>
