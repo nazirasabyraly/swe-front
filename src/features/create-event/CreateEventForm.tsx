@@ -1,20 +1,16 @@
 import { useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import { FormField } from '../../components/FormField';
+import { useFormat } from '../../i18n/useFormat';
 import {
   EVENT_CATEGORIES,
   EVENT_VISIBILITIES,
   type EventDraft,
   type EventDraftErrors,
-  type EventVisibility,
 } from './types';
-import { LIMITS, validateEventDraft } from './validation';
+import { EVENT_TIME_ZONES } from './timeZones';
+import { LIMITS, validateEventDraft, validationValues } from './validation';
 import { useObjectUrls } from './useObjectUrls';
-
-export const VISIBILITY_OPTIONS: Record<EventVisibility, { label: string; description: string }> = {
-  public: { label: 'Public', description: 'Listed on Discover and in search results.' },
-  unlisted: { label: 'Unlisted', description: 'Hidden from Discover. Anyone with the link can view it.' },
-  private: { label: 'Private', description: 'Only people you invite can view and register.' },
-};
 
 /** Order in which fields are checked when moving focus to the first error. */
 const FIELD_ORDER: (keyof EventDraft)[] = [
@@ -27,10 +23,14 @@ const FIELD_ORDER: (keyof EventDraft)[] = [
   'city',
   'date',
   'startTime',
+  'endDate',
+  'endTime',
+  'timeZone',
   'visibility',
   'registrationOpensAt',
   'registrationClosesAt',
   'capacity',
+  'refundPolicy',
 ];
 
 type TextFieldName = Exclude<keyof EventDraft, 'images' | 'category' | 'visibility'>;
@@ -53,10 +53,14 @@ export function CreateEventForm({
   initialDraft,
   onContinue,
   now = () => new Date(),
-  submitLabel = 'Continue to preview',
-  imagesHint = `Optional. Up to ${LIMITS.maxImages} images, 5 MB each. The first image is the cover.`,
+  submitLabel,
+  imagesHint,
   submitting = false,
 }: CreateEventFormProps) {
+  const { t } = useTranslation();
+  const format = useFormat();
+  const errorText = (key: EventDraftErrors[keyof EventDraft]) =>
+    key ? t(key, validationValues(format.number)) : undefined;
   const [draft, setDraft] = useState<EventDraft>(initialDraft);
   const [errors, setErrors] = useState<EventDraftErrors>({});
   const [attempted, setAttempted] = useState(false);
@@ -65,13 +69,16 @@ export function CreateEventForm({
 
   function update<K extends keyof EventDraft>(name: K, value: EventDraft[K]) {
     const next = { ...draft, [name]: value };
+    // Most events end on the day they start: keep the end date following the
+    // start date until the organizer picks a different one.
+    if (name === 'date' && (!draft.endDate || draft.endDate === draft.date)) next.endDate = value as string;
     setDraft(next);
     // Once the user has tried to continue, keep errors in sync as they fix them.
     if (attempted) setErrors(validateEventDraft(next, now()));
   }
 
   const onText =
-    (name: TextFieldName) => (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    (name: TextFieldName) => (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
       update(name, e.target.value);
 
   function onImagesSelected(e: ChangeEvent<HTMLInputElement>) {
@@ -107,23 +114,21 @@ export function CreateEventForm({
   const errorCount = Object.keys(errors).length;
 
   return (
-    <form ref={formRef} onSubmit={handleSubmit} noValidate aria-label="Event details">
+    <form ref={formRef} onSubmit={handleSubmit} noValidate aria-label={t('eventForm.ariaLabel')}>
       {attempted && errorCount > 0 && (
         <div className="notice notice--danger form-summary" role="alert">
-          <strong>
-            {errorCount === 1 ? 'Fix 1 field' : `Fix ${errorCount} fields`} to continue
-          </strong>
-          Check the highlighted fields below.
+          <strong>{t('eventForm.errorSummary', { count: errorCount })}</strong>
+          {t('eventForm.errorSummaryBody')}
         </div>
       )}
 
       <section className="card">
-        <h2 className="card__title">Event details</h2>
+        <h2 className="card__title">{t('eventForm.detailsHeading')}</h2>
         <div className="form-grid">
           <FormField
             id={fieldId('title')}
-            label="Event title"
-            error={errors.title}
+            label={t('eventForm.title')}
+            error={errorText(errors.title)}
             className="form-grid--full"
           >
             {(control) => (
@@ -134,7 +139,7 @@ export function CreateEventForm({
                 value={draft.title}
                 onChange={onText('title')}
                 maxLength={LIMITS.titleMax + 20}
-                placeholder="Almaty Nights — Vol. 4"
+                placeholder={t('eventForm.titlePlaceholder')}
                 autoComplete="off"
               />
             )}
@@ -142,9 +147,9 @@ export function CreateEventForm({
 
           <FormField
             id={fieldId('description')}
-            label="Description"
-            hint="Tell attendees what to expect. Blank lines start a new paragraph."
-            error={errors.description}
+            label={t('eventForm.description')}
+            hint={t('eventForm.descriptionHint')}
+            error={errorText(errors.description)}
             className="form-grid--full"
           >
             {(control) => (
@@ -162,7 +167,7 @@ export function CreateEventForm({
             className="field form-grid--full fieldset-reset"
             aria-describedby={errors.category ? 'event-category-error' : undefined}
           >
-            <legend className="field__label">Category</legend>
+            <legend className="field__label">{t('eventForm.category')}</legend>
             <div className="chip-group">
               {EVENT_CATEGORIES.map((category, i) => (
                 <label key={category} className="chip">
@@ -175,22 +180,22 @@ export function CreateEventForm({
                     onChange={() => update('category', category)}
                     aria-invalid={Boolean(errors.category)}
                   />
-                  {category}
+                  {t(`category.${category}`)}
                 </label>
               ))}
             </div>
             {errors.category && (
               <span id="event-category-error" className="field__error">
-                {errors.category}
+                {errorText(errors.category)}
               </span>
             )}
           </fieldset>
 
           <FormField
             id={fieldId('images')}
-            label="Images"
-            hint={imagesHint}
-            error={errors.images}
+            label={t('eventForm.images')}
+            hint={imagesHint ?? t('eventForm.imagesHint', { max: LIMITS.maxImages })}
+            error={errorText(errors.images)}
             className="form-grid--full"
           >
             {(control) => (
@@ -204,16 +209,16 @@ export function CreateEventForm({
                         type="button"
                         className="image-picker__remove"
                         onClick={() => removeImage(i)}
-                        aria-label={`Remove ${file.name}`}
+                        aria-label={t('eventForm.removeImage', { name: file.name })}
                       >
-                        Remove
+                        {t('eventForm.remove')}
                       </button>
                     </figcaption>
                   </figure>
                 ))}
                 {draft.images.length < LIMITS.maxImages && (
                   <label className="image-picker__add placeholder-stripes">
-                    <span className="btn">Add images</span>
+                    <span className="btn">{t('eventForm.addImages')}</span>
                     <input
                       {...control}
                       type="file"
@@ -232,10 +237,10 @@ export function CreateEventForm({
       </section>
 
       <section className="card">
-        <h2 className="card__title">Venue, date and time</h2>
-        <p className="label-muted card__intro">In-person event at a physical venue.</p>
+        <h2 className="card__title">{t('eventForm.venueHeading')}</h2>
+        <p className="label-muted card__intro">{t('eventForm.venueIntro')}</p>
         <div className="form-grid">
-          <FormField id={fieldId('venueName')} label="Venue name" error={errors.venueName}>
+          <FormField id={fieldId('venueName')} label={t('eventForm.venueName')} error={errorText(errors.venueName)}>
             {(control) => (
               <input
                 {...control}
@@ -243,12 +248,12 @@ export function CreateEventForm({
                 name="venueName"
                 value={draft.venueName}
                 onChange={onText('venueName')}
-                placeholder="Almaty Arena"
+                placeholder={t('eventForm.venuePlaceholder')}
               />
             )}
           </FormField>
 
-          <FormField id={fieldId('city')} label="City" error={errors.city}>
+          <FormField id={fieldId('city')} label={t('eventForm.city')} error={errorText(errors.city)}>
             {(control) => (
               <input
                 {...control}
@@ -256,7 +261,7 @@ export function CreateEventForm({
                 name="city"
                 value={draft.city}
                 onChange={onText('city')}
-                placeholder="Almaty"
+                placeholder={t('eventForm.cityPlaceholder')}
                 autoComplete="address-level2"
               />
             )}
@@ -264,9 +269,9 @@ export function CreateEventForm({
 
           <FormField
             id={fieldId('venueAddress')}
-            label="Street address"
-            hint="Optional"
-            error={errors.venueAddress}
+            label={t('eventForm.address')}
+            hint={t('common.optional')}
+            error={errorText(errors.venueAddress)}
             className="form-grid--full"
           >
             {(control) => (
@@ -281,7 +286,7 @@ export function CreateEventForm({
             )}
           </FormField>
 
-          <FormField id={fieldId('date')} label="Date" error={errors.date}>
+          <FormField id={fieldId('date')} label={t('eventForm.date')} error={errorText(errors.date)}>
             {(control) => (
               <input
                 {...control}
@@ -294,7 +299,7 @@ export function CreateEventForm({
             )}
           </FormField>
 
-          <FormField id={fieldId('startTime')} label="Start time" error={errors.startTime}>
+          <FormField id={fieldId('startTime')} label={t('eventForm.startTime')} error={errorText(errors.startTime)}>
             {(control) => (
               <input
                 {...control}
@@ -306,14 +311,69 @@ export function CreateEventForm({
               />
             )}
           </FormField>
+
+          <FormField id={fieldId('endDate')} label={t('eventForm.endDate')} error={errorText(errors.endDate)}>
+            {(control) => (
+              <input
+                {...control}
+                type="date"
+                className="input"
+                name="endDate"
+                value={draft.endDate}
+                min={draft.date || undefined}
+                onChange={onText('endDate')}
+              />
+            )}
+          </FormField>
+
+          <FormField id={fieldId('endTime')} label={t('eventForm.endTime')} error={errorText(errors.endTime)}>
+            {(control) => (
+              <input
+                {...control}
+                type="time"
+                className="input"
+                name="endTime"
+                value={draft.endTime}
+                onChange={onText('endTime')}
+              />
+            )}
+          </FormField>
+
+          <FormField
+            id={fieldId('timeZone')}
+            label={t('eventForm.timeZone')}
+            hint={t('eventForm.timeZoneHint')}
+            error={errorText(errors.timeZone)}
+            className="form-grid--full"
+          >
+            {(control) => (
+              <select
+                {...control}
+                className="input"
+                name="timeZone"
+                value={draft.timeZone}
+                onChange={onText('timeZone')}
+              >
+                {/* Keep an unlisted zone (e.g. from an older event) selectable. */}
+                {!(EVENT_TIME_ZONES as readonly string[]).includes(draft.timeZone) && (
+                  <option value={draft.timeZone}>{draft.timeZone}</option>
+                )}
+                {EVENT_TIME_ZONES.map((zone) => (
+                  <option key={zone} value={zone}>
+                    {`${t(`timeZone.${zone}`)} (${format.timeZoneName(new Date(), zone)})`}
+                  </option>
+                ))}
+              </select>
+            )}
+          </FormField>
         </div>
       </section>
 
       <section className="card">
-        <h2 className="card__title">Registration and visibility</h2>
+        <h2 className="card__title">{t('eventForm.registrationHeading')}</h2>
         <div className="form-grid">
           <fieldset className="field form-grid--full fieldset-reset">
-            <legend className="field__label">Visibility</legend>
+            <legend className="field__label">{t('eventForm.visibility')}</legend>
             <div className="option-cards">
               {EVENT_VISIBILITIES.map((visibility) => (
                 <label key={visibility} className="option-card">
@@ -325,9 +385,9 @@ export function CreateEventForm({
                     onChange={() => update('visibility', visibility)}
                   />
                   <span>
-                    <span className="option-card__label">{VISIBILITY_OPTIONS[visibility].label}</span>
+                    <span className="option-card__label">{t(`visibility.${visibility}.label`)}</span>
                     <span className="option-card__description">
-                      {VISIBILITY_OPTIONS[visibility].description}
+                      {t(`visibility.${visibility}.description`)}
                     </span>
                   </span>
                 </label>
@@ -337,8 +397,8 @@ export function CreateEventForm({
 
           <FormField
             id={fieldId('registrationOpensAt')}
-            label="Registration opens"
-            error={errors.registrationOpensAt}
+            label={t('eventForm.registrationOpens')}
+            error={errorText(errors.registrationOpensAt)}
           >
             {(control) => (
               <input
@@ -354,9 +414,9 @@ export function CreateEventForm({
 
           <FormField
             id={fieldId('registrationClosesAt')}
-            label="Registration closes"
-            hint="Must be before the event starts."
-            error={errors.registrationClosesAt}
+            label={t('eventForm.registrationCloses')}
+            hint={t('eventForm.registrationClosesHint')}
+            error={errorText(errors.registrationClosesAt)}
           >
             {(control) => (
               <input
@@ -372,9 +432,9 @@ export function CreateEventForm({
 
           <FormField
             id={fieldId('capacity')}
-            label="Capacity"
-            hint="Maximum number of attendees."
-            error={errors.capacity}
+            label={t('eventForm.capacity')}
+            hint={t('eventForm.capacityHint')}
+            error={errorText(errors.capacity)}
           >
             {(control) => (
               <input
@@ -391,12 +451,31 @@ export function CreateEventForm({
               />
             )}
           </FormField>
+
+          <FormField
+            id={fieldId('refundPolicy')}
+            label={t('eventForm.refundPolicy')}
+            hint={t('eventForm.refundPolicyHint')}
+            error={errorText(errors.refundPolicy)}
+            className="form-grid--full"
+          >
+            {(control) => (
+              <textarea
+                {...control}
+                className="input input--short"
+                name="refundPolicy"
+                value={draft.refundPolicy}
+                maxLength={LIMITS.refundPolicyMax + 200}
+                onChange={onText('refundPolicy')}
+              />
+            )}
+          </FormField>
         </div>
       </section>
 
       <div className="form-actions">
         <button type="submit" className="btn btn--primary" disabled={submitting}>
-          {submitLabel}
+          {submitLabel ?? t('eventForm.continue')}
         </button>
       </div>
     </form>

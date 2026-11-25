@@ -11,6 +11,8 @@
  *   PATCH /api/events/:id           -> EventDto     (multipart, same shape; no `images` keeps current ones)
  *   POST  /api/events/:id/publish   -> EventDto
  *   POST  /api/events/:id/unpublish -> EventDto
+ *   POST  /api/events/:id/cancel    -> EventDto     ({ reason }; server cancels/refunds tickets and notifies)
+ *   POST  /api/events/:id/duplicate -> EventDto     (new draft; details + ticket types, no orders/tickets/check-ins)
  */
 import type {
   CreateEventInput,
@@ -18,9 +20,9 @@ import type {
   EventFormat,
   EventVisibility,
 } from '../features/create-event/types';
-import { request } from './http';
+import { json, request } from './http';
 
-export type EventStatus = 'draft' | 'published';
+export type EventStatus = 'draft' | 'published' | 'cancelled';
 
 export interface OrganizerEvent {
   id: string;
@@ -31,17 +33,22 @@ export interface OrganizerEvent {
   format: EventFormat;
   venue: { name: string; address: string; city: string };
   startsAt: Date;
+  endsAt: Date;
+  /** IANA zone the event's times are shown in, e.g. "Asia/Almaty". */
+  timeZone: string;
   visibility: EventVisibility;
   registrationOpensAt: Date;
   registrationClosesAt: Date;
   capacity: number;
+  refundPolicy: string;
   status: EventStatus;
 }
 
 /** Wire format: same as OrganizerEvent but with ISO 8601 date strings. */
 export interface EventDto
-  extends Omit<OrganizerEvent, 'startsAt' | 'registrationOpensAt' | 'registrationClosesAt'> {
+  extends Omit<OrganizerEvent, 'startsAt' | 'endsAt' | 'registrationOpensAt' | 'registrationClosesAt'> {
   startsAt: string;
+  endsAt: string;
   registrationOpensAt: string;
   registrationClosesAt: string;
 }
@@ -53,12 +60,17 @@ export interface EventsApi {
   updateEvent(id: string, input: CreateEventInput): Promise<OrganizerEvent>;
   publishEvent(id: string): Promise<OrganizerEvent>;
   unpublishEvent(id: string): Promise<OrganizerEvent>;
+  /** Irreversible. The server invalidates tickets, refunds paid orders and notifies attendees. */
+  cancelEvent(id: string, reason: string): Promise<OrganizerEvent>;
+  /** Copies details and ticket-type setup into a new draft, never orders, tickets or check-ins (SRS 4.16). */
+  duplicateEvent(id: string): Promise<OrganizerEvent>;
 }
 
 export function fromDto(dto: EventDto): OrganizerEvent {
   return {
     ...dto,
     startsAt: new Date(dto.startsAt),
+    endsAt: new Date(dto.endsAt),
     registrationOpensAt: new Date(dto.registrationOpensAt),
     registrationClosesAt: new Date(dto.registrationClosesAt),
   };
@@ -69,6 +81,7 @@ function toFormData({ images, ...input }: CreateEventInput): FormData {
   const data = {
     ...input,
     startsAt: input.startsAt.toISOString(),
+    endsAt: input.endsAt.toISOString(),
     registrationOpensAt: input.registrationOpensAt.toISOString(),
     registrationClosesAt: input.registrationClosesAt.toISOString(),
   };
@@ -100,5 +113,11 @@ export const httpEventsApi: EventsApi = {
   },
   async unpublishEvent(eventId) {
     return fromDto(await request<EventDto>(`/api/events/${id(eventId)}/unpublish`, { method: 'POST' }));
+  },
+  async cancelEvent(eventId, reason) {
+    return fromDto(await request<EventDto>(`/api/events/${id(eventId)}/cancel`, json('POST', { reason })));
+  },
+  async duplicateEvent(eventId) {
+    return fromDto(await request<EventDto>(`/api/events/${id(eventId)}/duplicate`, { method: 'POST' }));
   },
 };

@@ -1,0 +1,325 @@
+/* Orders and tickets — builds on global.css. */
+
+.order-page {
+  display: grid;
+  gap: 16px;
+}
+
+.order-page .card + .card {
+  margin-top: 0;
+}
+
+.order--new {
+  text-align: center;
+}
+
+.order--new .order__facts,
+.order--new .order__totals {
+  text-align: left;
+}
+
+.checkout-success__mark {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 8px;
+  border-radius: 50%;
+  background: var(--color-accent-soft);
+  color: var(--color-accent-strong);
+  font-size: 28px;
+  line-height: 56px;
+  text-align: center;
+}
+
+.order-event__title {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+h2.order-event__title {
+  font-size: 20px;
+}
+
+.order-event__meta {
+  margin: 2px 0 0;
+  font-size: 16px;
+}
+
+.order__facts,
+.order-row__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.order__facts dd,
+.order-row__facts dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.order__number {
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+}
+
+.order__totals {
+  margin-top: 8px;
+}
+
+.order-list,
+.ticket-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.order-row__main {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.order-row__sim {
+  font-weight: 400;
+  font-size: 14px;
+  color: var(--color-danger);
+}
+
+.ticket-list--grid {
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+
+.ticket-item {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.ticket-item__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.ticket-item__name {
+  margin: 0;
+  font-weight: 600;
+}
+
+.ticket-item__id {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 14px;
+}
+
+.ticket-item .btn {
+  justify-self: start;
+}
+
+.ticket-group {
+  margin-bottom: 24px;
+}
+
+.ticket-group__title {
+  font-size: 24px;
+  margin-bottom: 10px;
+}
+
+/* ---------- The ticket ---------- */
+.ticket-page__notice {
+  margin-bottom: 16px;
+}
+
+.ticket {
+  max-width: 760px;
+  border: 2px solid var(--color-text);
+  border-radius: var(--radius-lg);
+  background: #fff;
+  overflow: hidden;
+}
+
+.ticket__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  border-bottom: 2px dashed var(--color-border);
+}
+
+.ticket__brand {
+  font-family: var(--font-serif);
+  font-size: 22px;
+}
+
+.ticket__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 24px;
+  padding: 20px;
+}
+
+@media (max-width: 640px) {
+  .ticket__body {
+    grid-template-columns: 1fr;
+  }
+
+  /* QR first on phones: it's what staff need to see. */
+  .ticket__qr {
+    order: -1;
+  }
+}
+
+.ticket__event {
+  font-size: 26px;
+  line-height: 1.2;
+  margin-bottom: 12px;
+  overflow-wrap: anywhere;
+}
+
+.ticket__facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 20px;
+  margin: 0;
+}
+
+.ticket__fact--wide {
+  grid-column: 1 / -1;
+}
+
+.ticket__facts dt {
+  font-size: 14px;
+  color: var(--color-muted);
+}
+
+.ticket__facts dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.ticket__address {
+  display: block;
+  font-weight: 400;
+  font-size: 16px;
+}
+
+.ticket__id {
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+}
+
+/* Admission QR: plain solid frame, unlike the dashed "PROMO" campaign QR. */
+.ticket__qr {
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 6px;
+}
+
+.ticket__qr img {
+  display: block;
+  width: 220px;
+  height: 220px;
+  padding: 8px;
+  border: 1px solid var(--color-text);
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
+
+.ticket__qr-note {
+  max-width: 220px;
+  margin: 0;
+  font-size: 14px;
+  text-align: center;
+  color: var(--color-muted);
+}
+
+.ticket__qr-void {
+  width: 220px;
+  margin: 0;
+  padding: 60px 16px;
+  border: 2px dashed var(--color-danger);
+  border-radius: var(--radius-sm);
+  color: var(--color-danger);
+  text-align: center;
+  font-weight: 600;
+}
+
+.ticket--void .ticket__details {
+  opacity: 0.7;
+}
+
+.ticket-page__actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  max-width: 760px;
+}
+
+/* ---------- Print (SRS 4.7: print-optimized, grayscale-safe, QR large enough for paper) ---------- */
+@media print {
+  @page {
+    size: A4;
+    margin: 15mm;
+  }
+
+  body {
+    background: #fff !important;
+  }
+
+  .site-header,
+  .mock-banner,
+  .no-print {
+    display: none !important;
+  }
+
+  .ticket {
+    max-width: none;
+    border: 1.5pt solid #000;
+    break-inside: avoid;
+    color: #000;
+  }
+
+  .ticket * {
+    color: #000 !important;
+  }
+
+  .ticket__body {
+    grid-template-columns: 1fr 65mm;
+  }
+
+  .ticket__qr {
+    order: 0;
+  }
+
+  .ticket__qr img {
+    width: 60mm;
+    height: 60mm;
+    border: 0;
+  }
+}
+
+.order__help {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: -28px;
+}
+
+.order__calendar {
+  margin: 12px 0;
+}
+
+.order--new .order__calendar .add-to-calendar {
+  justify-content: center;
+}
+
+.ticket-page__calendar {
+  max-width: 760px;
+  margin-top: 16px;
+}

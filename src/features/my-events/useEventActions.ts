@@ -1,9 +1,12 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
-import { useEventsApi } from '../../api/EventsApiContext';
+import { useDescribeError } from '../../api/errors';
+import { useEventsApi } from '../../api/ApiContext';
+import { paths } from '../../routes';
 import type { OrganizerEvent } from '../../api/events';
 
-export const editEventPath = (id: string) => `/events/${encodeURIComponent(id)}/edit`;
+export const editEventPath = paths.organizerEditEvent;
 
 /**
  * Publish / unpublish / edit handlers for the organizer's event list.
@@ -12,6 +15,8 @@ export const editEventPath = (id: string) => `/events/${encodeURIComponent(id)}/
 export function useEventActions(onEventUpdated: (event: OrganizerEvent) => void) {
   const api = useEventsApi();
   const navigate = useNavigate();
+  const { t } = useTranslation();
+  const describeError = useDescribeError();
   const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(new Set());
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -22,7 +27,7 @@ export function useEventActions(onEventUpdated: (event: OrganizerEvent) => void)
     try {
       onEventUpdated(await action(id));
     } catch (err) {
-      setErrors((e) => ({ ...e, [id]: err instanceof Error ? `${failure} ${err.message}` : failure }));
+      setErrors((e) => ({ ...e, [id]: `${failure} ${describeError(err)}` }));
     } finally {
       setPendingIds((s) => {
         const next = new Set(s);
@@ -33,9 +38,11 @@ export function useEventActions(onEventUpdated: (event: OrganizerEvent) => void)
   }
 
   return {
-    publish: (id: string) => run(id, (i) => api.publishEvent(i), 'Couldn’t publish the event.'),
-    unpublish: (id: string) => run(id, (i) => api.unpublishEvent(i), 'Couldn’t unpublish the event.'),
+    publish: (id: string) => run(id, (i) => api.publishEvent(i), t('myEvents.publishFailed')),
+    unpublish: (id: string) => run(id, (i) => api.unpublishEvent(i), t('myEvents.unpublishFailed')),
     edit: (id: string) => navigate(editEventPath(id)),
+    tickets: (id: string) => navigate(paths.organizerEventTickets(id)),
+    campaigns: (id: string) => navigate(paths.organizerEventCampaigns(id)),
     isPending: (id: string) => pendingIds.has(id),
     errorFor: (id: string): string | undefined => errors[id],
   };

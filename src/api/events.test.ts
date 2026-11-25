@@ -10,6 +10,9 @@ const dto: EventDto = {
   format: 'physical',
   venue: { name: 'Almaty Arena', address: '', city: 'Almaty' },
   startsAt: '2026-10-12T14:00:00.000Z',
+  endsAt: '2026-10-12T18:00:00.000Z',
+  timeZone: 'Asia/Almaty',
+  refundPolicy: '',
   visibility: 'public',
   registrationOpensAt: '2026-09-25T05:00:00.000Z',
   registrationClosesAt: '2026-10-12T12:00:00.000Z',
@@ -53,11 +56,18 @@ describe('httpEventsApi', () => {
   });
 
   it('throws ApiError with the server’s message on failure', async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ message: 'Registration has already closed.' }, 409));
-
-    await expect(httpEventsApi.publishEvent('evt-1')).rejects.toEqual(
-      new ApiError('Registration has already closed.', 409),
+    fetchMock.mockResolvedValue(
+      jsonResponse({ code: 'registration_closed', message: 'Registration has already closed.' }, 409),
     );
+
+    const error = await httpEventsApi.publishEvent('evt-1').catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({
+      status: 409,
+      code: 'registration_closed',
+      serverMessage: 'Registration has already closed.',
+    });
   });
 
   it('reports network failures', async () => {

@@ -11,7 +11,7 @@ const event = makeEvent({
 
 describe('EditEventPage', () => {
   it('pre-fills the form with the saved event', async () => {
-    renderOrganizerApp(createFakeApi([event]), '/events/evt-1/edit');
+    renderOrganizerApp(createFakeApi([event]), '/organizer/events/evt-1/edit');
 
     expect(await screen.findByLabelText('Event title')).toHaveValue('Almaty Nights — Vol. 4');
     expect(screen.getByLabelText('Description')).toHaveValue(event.description);
@@ -26,13 +26,13 @@ describe('EditEventPage', () => {
     expect(screen.getByLabelText('Registration closes')).toHaveValue('2026-10-12T17:00');
     expect(screen.getByLabelText('Capacity')).toHaveValue(1200);
     expect(screen.getByText(/This event is published/)).toBeInTheDocument();
-    expect(screen.getByText(/This event has 1 image\(s\)/)).toBeInTheDocument();
+    expect(screen.getByText(/This event has 1 image\./)).toBeInTheDocument();
   });
 
   it('saves changes and returns to My events with a confirmation', async () => {
     const user = userEvent.setup();
     const api = createFakeApi([event]);
-    renderOrganizerApp(api, '/events/evt-1/edit');
+    renderOrganizerApp(api, '/organizer/events/evt-1/edit');
 
     const title = await screen.findByLabelText('Event title');
     await user.clear(title);
@@ -47,24 +47,48 @@ describe('EditEventPage', () => {
     expect(await screen.findByRole('status')).toHaveTextContent(
       'Changes to “Almaty Nights — Vol. 5” saved',
     );
-    expect(screen.getByTestId('location')).toHaveTextContent('/events');
+    expect(screen.getByTestId('location')).toHaveTextContent('/organizer/events');
   });
 
   it('stays on the page and shows the error when saving fails', async () => {
     const user = userEvent.setup();
     const api = createFakeApi([event]);
     api.updateEvent.mockRejectedValueOnce(new Error('Capacity is below tickets already sold.'));
-    renderOrganizerApp(api, '/events/evt-1/edit');
+    renderOrganizerApp(api, '/organizer/events/evt-1/edit');
 
     await user.click(await screen.findByRole('button', { name: 'Save changes' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Capacity is below tickets already sold.');
-    expect(screen.getByTestId('location')).toHaveTextContent('/events/evt-1/edit');
+    expect(screen.getByTestId('location')).toHaveTextContent('/organizer/events/evt-1/edit');
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled();
   });
 
   it('shows an error when the event can’t be loaded', async () => {
-    renderOrganizerApp(createFakeApi([]), '/events/missing/edit');
+    renderOrganizerApp(createFakeApi([]), '/organizer/events/missing/edit');
     expect(await screen.findByRole('alert')).toHaveTextContent('Event not found.');
   });
+
+  it('pre-fills end time, time zone and refund policy in the event’s own zone', async () => {
+    const moscow = makeEvent({
+      id: 'evt-msk',
+      timeZone: 'Europe/Moscow',
+      startsAt: new Date('2026-10-12T16:00:00Z'),
+      endsAt: new Date('2026-10-13T01:30:00Z'),
+    });
+    renderOrganizerApp(createFakeApi([moscow]), '/organizer/events/evt-msk/edit');
+
+    expect(await screen.findByLabelText('Time zone')).toHaveValue('Europe/Moscow');
+    expect(screen.getByLabelText('Date')).toHaveValue('2026-10-12');
+    expect(screen.getByLabelText('Start time')).toHaveValue('19:00');
+    expect(screen.getByLabelText('End date')).toHaveValue('2026-10-13');
+    expect(screen.getByLabelText('End time')).toHaveValue('04:30');
+    expect(screen.getByLabelText('Refund policy')).toHaveValue('Full refunds up to 48 hours before the event.');
+  });
+
+  it('does not offer editing for a cancelled event', async () => {
+    renderOrganizerApp(createFakeApi([makeEvent({ id: 'evt-x', status: 'cancelled' })]), '/organizer/events/evt-x/edit');
+    expect(await screen.findByText('This event is cancelled and can no longer be edited.')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Event title')).not.toBeInTheDocument();
+  });
 });
+

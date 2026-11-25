@@ -1,0 +1,34 @@
+/* Admin portal — builds on event-admin.css and public-events.css. */
+
+.admin-search {
+  margin-bottom: 20px;
+}
+
+.admin-results section {
+  margin-bottom: 20px;
+}
+
+.admin-results p {
+  margin: 4px 0;
+}
+
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.admin-report {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.admin-report p {
+  margin: 2px 0;
+}
+
+.admin-sim {
+  margin: 0 0 12px;
+}

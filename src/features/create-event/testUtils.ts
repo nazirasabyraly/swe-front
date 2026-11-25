@@ -1,8 +1,8 @@
 import { fireEvent, screen } from '@testing-library/react';
 import type { UserEvent } from '@testing-library/user-event';
 
-/** Fixed clock for tests: Thu 24 Sep 2026, 12:00 local time. */
-export const NOW = new Date(2026, 8, 24, 12, 0);
+/** Fixed clock for tests: Thu 24 Sep 2026, 12:00 in Almaty. */
+export const NOW = new Date('2026-09-24T07:00:00Z');
 export const now = () => NOW;
 
 export interface FormValues {
@@ -14,6 +14,7 @@ export interface FormValues {
   address: string;
   date: string;
   startTime: string;
+  endTime: string;
   visibility: 'Public' | 'Unlisted' | 'Private';
   registrationOpensAt: string;
   registrationClosesAt: string;
@@ -30,6 +31,7 @@ export const validValues: FormValues = {
   address: 'Momyshuly Ave 1',
   date: '2026-10-12',
   startTime: '19:00',
+  endTime: '23:00',
   visibility: 'Unlisted',
   registrationOpensAt: '2026-09-25T10:00',
   registrationClosesAt: '2026-10-12T17:00',
@@ -50,6 +52,8 @@ export async function fillEventForm(user: UserEvent, overrides: Partial<FormValu
   if (v.address) await user.type(screen.getByLabelText('Street address'), v.address);
   if (v.date) setValue('Date', v.date);
   if (v.startTime) setValue('Start time', v.startTime);
+  // End date follows the start date automatically.
+  if (v.endTime) setValue('End time', v.endTime);
   await user.click(screen.getByRole('radio', { name: new RegExp(`^${v.visibility}`) }));
   if (v.registrationOpensAt) setValue('Registration opens', v.registrationOpensAt);
   if (v.registrationClosesAt) setValue('Registration closes', v.registrationClosesAt);

@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams } from 'react-router';
-import { useEventsApi } from '../../api/EventsApiContext';
+import { useDescribeError } from '../../api/errors';
+import { ErrorState, LoadingState } from '../../components/DataStates';
+import { paths } from '../../routes';
+import { useEventsApi } from '../../api/ApiContext';
 import type { OrganizerEvent } from '../../api/events';
 import { CreateEventForm } from '../create-event/CreateEventForm';
 import type { EventDraft } from '../create-event/types';
@@ -19,6 +23,8 @@ interface EditEventPageProps {
 
 export function EditEventPage({ now }: EditEventPageProps) {
   const { id = '' } = useParams();
+  const { t } = useTranslation();
+  const describeError = useDescribeError();
   const api = useEventsApi();
   const navigate = useNavigate();
   const [load, setLoad] = useState<LoadState>({ status: 'loading' });
@@ -32,52 +38,53 @@ export function EditEventPage({ now }: EditEventPageProps) {
       (event) => !cancelled && setLoad({ status: 'ready', event }),
       (err: unknown) =>
         !cancelled &&
-        setLoad({ status: 'error', message: err instanceof Error ? err.message : 'Could not load the event.' }),
+        setLoad({ status: 'error', message: describeError(err) }),
     );
     return () => {
       cancelled = true;
     };
-  }, [api, id]);
+  }, [api, id, describeError]);
 
   async function handleSave(draft: EventDraft) {
     setSaving(true);
     setSaveError(null);
     try {
       const saved = await api.updateEvent(id, toCreateEventInput(draft));
-      const state: EventListLocationState = { flash: `Changes to “${saved.title}” saved` };
-      navigate('/events', { state });
+      const state: EventListLocationState = { flash: t('editEvent.savedFlash', { title: saved.title }) };
+      navigate(paths.organizerEvents, { state });
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Something went wrong. Try again.');
+      setSaveError(describeError(err));
       setSaving(false);
     }
   }
 
   return (
     <div>
-      <Link to="/events" className="back-link">
-        ← My events
+      <Link to={paths.organizerEvents} className="back-link">
+        {t('editEvent.back')}
       </Link>
-      <h1 className="section-title">Edit event</h1>
+      <h1 className="section-title">{t('editEvent.title')}</h1>
 
-      {load.status === 'loading' && <p className="label-muted" role="status">Loading event…</p>}
+      {load.status === 'loading' && <LoadingState label={t('editEvent.loading')} />}
 
-      {load.status === 'error' && (
-        <div className="notice notice--danger" role="alert">
-          <strong>Couldn’t load the event</strong>
-          {load.message}
-        </div>
+      {load.status === 'error' && <ErrorState title={t('editEvent.loadError')} message={load.message} />}
+
+      {load.status === 'ready' && load.event.status === 'cancelled' && (
+        <p className="notice" role="status">
+          {t('editEvent.cancelledNote')}
+        </p>
       )}
 
-      {load.status === 'ready' && (
+      {load.status === 'ready' && load.event.status !== 'cancelled' && (
         <>
           <p className="section-subtitle">
             {load.event.status === 'published'
-              ? 'This event is published. Saved changes are visible to attendees straight away.'
-              : 'This event is a draft. Attendees can’t see it until you publish it.'}
+              ? t('editEvent.publishedNote')
+              : t('editEvent.draftNote')}
           </p>
           {saveError && (
             <div className="notice notice--danger form-summary" role="alert">
-              <strong>Couldn’t save changes</strong>
+              <strong>{t('editEvent.saveError')}</strong>
               {saveError}
             </div>
           )}
@@ -85,11 +92,11 @@ export function EditEventPage({ now }: EditEventPageProps) {
             initialDraft={eventToDraft(load.event)}
             onContinue={handleSave}
             now={now}
-            submitLabel={saving ? 'Saving…' : 'Save changes'}
+            submitLabel={saving ? t('editEvent.saving') : t('editEvent.save')}
             submitting={saving}
             imagesHint={
               load.event.imageUrls.length > 0
-                ? `This event has ${load.event.imageUrls.length} image(s). Upload new images to replace them, or leave empty to keep them.`
+                ? t('editEvent.imagesExisting', { count: load.event.imageUrls.length })
                 : undefined
             }
           />

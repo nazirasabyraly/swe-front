@@ -1,0 +1,152 @@
+/* Support cases — builds on global.css and the orders styles. */
+
+.support-new {
+  max-width: 720px;
+}
+
+.support-new__context {
+  margin-bottom: 16px;
+}
+
+.support-new__fields {
+  display: grid;
+  gap: 16px;
+}
+
+.support-list__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -8px 0 24px;
+}
+
+.support-section {
+  margin-bottom: 24px;
+}
+
+.support-cases {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.support-case-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.support-case-row p {
+  margin: 2px 0 0;
+  font-size: 15px;
+}
+
+.support-case-row__subject {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.support-case__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.support-case__context {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin: 0 0 20px;
+  padding: 12px 0;
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.support-case__context dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.support-case__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 760px) {
+  .support-case__layout {
+    grid-template-columns: 1fr;
+  }
+
+  .support-manage {
+    order: -1;
+  }
+}
+
+.support-thread {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.support-message {
+  max-width: 85%;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.support-message--requester {
+  justify-self: start;
+  background: var(--color-surface);
+}
+
+.support-message--staff {
+  justify-self: end;
+  background: var(--color-accent-soft);
+}
+
+.support-message__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 0 0 4px;
+  font-size: 14px;
+  color: var(--color-muted);
+}
+
+.support-message__meta strong {
+  color: var(--color-text);
+}
+
+.support-message__role {
+  color: var(--color-accent-strong);
+  font-weight: 600;
+}
+
+.support-message__body {
+  margin: 0;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.support-reply {
+  display: grid;
+  gap: 8px;
+}
+
+.support-manage {
+  display: grid;
+  gap: 8px;
+}
+
+.support-manage .card__title {
+  margin-bottom: 4px;
+}

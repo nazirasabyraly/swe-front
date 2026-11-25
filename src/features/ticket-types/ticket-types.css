@@ -1,0 +1,129 @@
+/* Ticket types — builds on the shared primitives in styles/global.css. */
+
+.ticket-types__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* Only matters once the button wraps below the heading on narrow screens. */
+.ticket-types__header .btn {
+  margin-bottom: 16px;
+}
+
+.ticket-types__subtitle {
+  margin: -8px 0 16px;
+}
+
+.ticket-types__notice {
+  margin: 0 0 12px;
+}
+
+.ticket-types__list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Row layout mirrors prototype screen 3: name | price | quantity | status. */
+.ticket-row__main {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+@media (max-width: 640px) {
+  .ticket-row__main {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .ticket-row__name {
+    grid-column: 1 / -1;
+  }
+}
+
+.ticket-row--hidden .ticket-row__main {
+  opacity: 0.75;
+}
+
+.ticket-row__title {
+  font-family: var(--font-sans);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.ticket-row__name p {
+  margin: 2px 0 0;
+}
+
+.ticket-row__description {
+  font-size: 16px;
+}
+
+.ticket-row__fact {
+  display: flex;
+  flex-direction: column;
+}
+
+.ticket-row__fact .label-muted {
+  font-size: 14px;
+}
+
+.ticket-row__counters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin: 12px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-border);
+  font-size: 15px;
+}
+
+.ticket-row__counters div {
+  display: flex;
+  gap: 6px;
+}
+
+.ticket-row__counters dt {
+  color: var(--color-muted);
+}
+
+.ticket-row__counters dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.ticket-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.ticket-form {
+  margin-bottom: 12px;
+  background: #fffaf7;
+}
+
+.ticket-form__title {
+  font-size: 22px;
+  margin-bottom: 12px;
+}
+
+.setup-actions {
+  flex-wrap: wrap;
+}
+
+.setup-hint {
+  text-align: right;
+  margin: 8px 0 0;
+}
+
+.ticket-page__title {
+  margin-bottom: 16px;
+}

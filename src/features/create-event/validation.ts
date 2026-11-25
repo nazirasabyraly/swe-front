@@ -1,3 +1,4 @@
+import { isValidTimeZone, zonedDateTime, zonedDateTimeLocal } from '../../lib/timezone';
 import type { CreateEventInput, EventDraft, EventDraftErrors } from './types';
 
 export const LIMITS = {
@@ -7,24 +8,30 @@ export const LIMITS = {
   maxImages: 5,
   maxImageBytes: 5 * 1024 * 1024,
   capacityMax: 100_000,
+  refundPolicyMax: 2000,
 } as const;
 
-/** Parses native input values as local time. Returns null for empty/invalid input. */
-export function parseLocalDateTime(date: string, time = '00:00'): Date | null {
-  const d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-  const t = /^(\d{2}):(\d{2})$/.exec(time);
-  if (!d || !t) return null;
-  const result = new Date(+d[1], +d[2] - 1, +d[3], +t[1], +t[2]);
-  return Number.isNaN(result.getTime()) ? null : result;
+/** Interpolation values for the `validation.*` messages. */
+export function validationValues(formatNumber: (n: number) => string) {
+  return {
+    titleMax: LIMITS.titleMax,
+    descriptionMin: LIMITS.descriptionMin,
+    descriptionMax: LIMITS.descriptionMax,
+    maxImages: LIMITS.maxImages,
+    capacityMax: formatNumber(LIMITS.capacityMax),
+    refundPolicyMax: formatNumber(LIMITS.refundPolicyMax),
+  };
 }
 
-function parseDateTimeLocal(value: string): Date | null {
-  const [date, time] = value.split('T');
-  return parseLocalDateTime(date ?? '', time?.slice(0, 5));
-}
-
-export function getEventStart(draft: EventDraft): Date | null {
-  return parseLocalDateTime(draft.date, draft.startTime);
+/** Draft times as instants, read in the event's time zone. Null when empty/invalid. */
+export function draftInstants(draft: EventDraft) {
+  const zone = draft.timeZone;
+  return {
+    startsAt: zonedDateTime(draft.date, draft.startTime, zone),
+    endsAt: zonedDateTime(draft.endDate, draft.endTime, zone),
+    opensAt: zonedDateTimeLocal(draft.registrationOpensAt, zone),
+    closesAt: zonedDateTimeLocal(draft.registrationClosesAt, zone),
+  };
 }
 
 export function validateEventDraft(draft: EventDraft, now: Date): EventDraftErrors {
@@ -32,65 +39,72 @@ export function validateEventDraft(draft: EventDraft, now: Date): EventDraftErro
   const title = draft.title.trim();
   const description = draft.description.trim();
 
-  if (!title) errors.title = 'Enter an event title.';
+  if (!title) errors.title = 'validation.titleRequired';
   else if (title.length > LIMITS.titleMax)
-    errors.title = `Title must be ${LIMITS.titleMax} characters or fewer.`;
+    errors.title = 'validation.titleTooLong';
 
-  if (!description) errors.description = 'Enter a description.';
+  if (!description) errors.description = 'validation.descriptionRequired';
   else if (description.length < LIMITS.descriptionMin)
-    errors.description = `Description must be at least ${LIMITS.descriptionMin} characters.`;
+    errors.description = 'validation.descriptionTooShort';
   else if (description.length > LIMITS.descriptionMax)
-    errors.description = `Description must be ${LIMITS.descriptionMax} characters or fewer.`;
+    errors.description = 'validation.descriptionTooLong';
 
-  if (!draft.category) errors.category = 'Choose a category.';
+  if (!draft.category) errors.category = 'validation.categoryRequired';
 
   if (draft.images.length > LIMITS.maxImages)
-    errors.images = `Upload up to ${LIMITS.maxImages} images.`;
+    errors.images = 'validation.tooManyImages';
   else if (draft.images.some((f) => !f.type.startsWith('image/')))
-    errors.images = 'Only image files can be uploaded.';
+    errors.images = 'validation.notAnImage';
   else if (draft.images.some((f) => f.size > LIMITS.maxImageBytes))
-    errors.images = 'Each image must be 5 MB or smaller.';
+    errors.images = 'validation.imageTooLarge';
 
-  if (!draft.venueName.trim()) errors.venueName = 'Enter the venue name.';
-  if (!draft.city.trim()) errors.city = 'Enter the city.';
+  if (!draft.venueName.trim()) errors.venueName = 'validation.venueRequired';
+  if (!draft.city.trim()) errors.city = 'validation.cityRequired';
 
-  const startsAt = getEventStart(draft);
-  if (!draft.date) errors.date = 'Choose the event date.';
-  if (!draft.startTime) errors.startTime = 'Choose the start time.';
+  const { startsAt, endsAt, opensAt, closesAt } = draftInstants(draft);
+  if (!isValidTimeZone(draft.timeZone)) errors.timeZone = 'validation.timeZoneInvalid';
+
+  if (!draft.date) errors.date = 'validation.dateRequired';
+  if (!draft.startTime) errors.startTime = 'validation.startTimeRequired';
   if (draft.date && draft.startTime) {
-    if (!startsAt) errors.date = 'Enter a valid date and time.';
-    else if (startsAt <= now) errors.date = 'The event must start in the future.';
+    if (!startsAt) errors.date = 'validation.invalidDateTime';
+    else if (startsAt <= now) errors.date = 'validation.startInPast';
   }
 
-  const opensAt = parseDateTimeLocal(draft.registrationOpensAt);
-  const closesAt = parseDateTimeLocal(draft.registrationClosesAt);
-  if (!draft.registrationOpensAt) errors.registrationOpensAt = 'Choose when registration opens.';
-  else if (!opensAt) errors.registrationOpensAt = 'Enter a valid date and time.';
+  if (!draft.endDate) errors.endDate = 'validation.endDateRequired';
+  if (!draft.endTime) errors.endTime = 'validation.endTimeRequired';
+  if (draft.endDate && draft.endTime) {
+    if (!endsAt) errors.endDate = 'validation.invalidDateTime';
+    else if (startsAt && endsAt <= startsAt) errors.endTime = 'validation.endBeforeStart';
+  }
+  if (!draft.registrationOpensAt) errors.registrationOpensAt = 'validation.opensRequired';
+  else if (!opensAt) errors.registrationOpensAt = 'validation.invalidDateTime';
 
-  if (!draft.registrationClosesAt) errors.registrationClosesAt = 'Choose when registration closes.';
-  else if (!closesAt) errors.registrationClosesAt = 'Enter a valid date and time.';
-  else if (closesAt <= now) errors.registrationClosesAt = 'Registration must close in the future.';
+  if (!draft.registrationClosesAt) errors.registrationClosesAt = 'validation.closesRequired';
+  else if (!closesAt) errors.registrationClosesAt = 'validation.invalidDateTime';
+  else if (closesAt <= now) errors.registrationClosesAt = 'validation.closesInPast';
   else if (opensAt && closesAt <= opensAt)
-    errors.registrationClosesAt = 'Registration must close after it opens.';
+    errors.registrationClosesAt = 'validation.closesBeforeOpens';
   else if (startsAt && closesAt > startsAt)
-    errors.registrationClosesAt = 'Registration must close before the event starts.';
+    errors.registrationClosesAt = 'validation.closesAfterStart';
 
   const capacity = draft.capacity.trim();
-  if (!capacity) errors.capacity = 'Enter the event capacity.';
+  if (!capacity) errors.capacity = 'validation.capacityRequired';
   else if (!/^\d+$/.test(capacity) || Number(capacity) < 1)
-    errors.capacity = 'Capacity must be a whole number of at least 1.';
+    errors.capacity = 'validation.capacityInvalid';
   else if (Number(capacity) > LIMITS.capacityMax)
-    errors.capacity = `Capacity cannot exceed ${LIMITS.capacityMax.toLocaleString('en-US')}.`;
+    errors.capacity = 'validation.capacityTooLarge';
+
+  if (draft.refundPolicy.trim().length > LIMITS.refundPolicyMax)
+    errors.refundPolicy = 'validation.refundPolicyTooLong';
 
   return errors;
 }
 
 /** Converts a draft that passed `validateEventDraft` into submission data. */
 export function toCreateEventInput(draft: EventDraft): CreateEventInput {
-  const startsAt = getEventStart(draft);
-  const opensAt = parseDateTimeLocal(draft.registrationOpensAt);
-  const closesAt = parseDateTimeLocal(draft.registrationClosesAt);
-  if (!draft.category || !startsAt || !opensAt || !closesAt) {
+  const { startsAt, endsAt, opensAt, closesAt } = draftInstants(draft);
+  if (!draft.category || !startsAt || !endsAt || !opensAt || !closesAt) {
     throw new Error('toCreateEventInput called with an invalid draft');
   }
   return {
@@ -105,9 +119,12 @@ export function toCreateEventInput(draft: EventDraft): CreateEventInput {
       city: draft.city.trim(),
     },
     startsAt,
+    endsAt,
+    timeZone: draft.timeZone,
     visibility: draft.visibility,
     registrationOpensAt: opensAt,
     registrationClosesAt: closesAt,
     capacity: Number(draft.capacity),
+    refundPolicy: draft.refundPolicy.trim(),
   };
 }

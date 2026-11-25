@@ -1,0 +1,106 @@
+/* Checkout — builds on global.css; totals reuse .public-summary from public-events.css. */
+
+.checkout__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 760px) {
+  .checkout__layout {
+    grid-template-columns: 1fr;
+  }
+
+  /* Totals and the timer first on phones, so the deadline is visible before the form. */
+  .checkout__summary {
+    order: -1;
+  }
+}
+
+.checkout__main {
+  display: grid;
+  gap: 16px;
+}
+
+.checkout__main .card + .card {
+  margin-top: 0;
+}
+
+.checkout__hint {
+  margin: -8px 0 12px;
+  font-size: 16px;
+}
+
+.checkout__attendees {
+  display: grid;
+  gap: 12px;
+}
+
+.checkout__contact {
+  margin: 0 0 8px;
+}
+
+.checkout__payment-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.checkout__payment-head .card__title {
+  margin: 0;
+}
+
+.checkout__sim {
+  margin: 0 0 12px;
+}
+
+.checkout__actions {
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.checkout__summary {
+  position: sticky;
+  top: 16px;
+}
+
+.checkout__lines {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+  padding: 0;
+  list-style: none;
+  font-size: 16px;
+}
+
+.checkout__lines li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.hold-timer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-strong);
+  font-size: 16px;
+}
+
+.hold-timer__clock {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.hold-timer--warning {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}

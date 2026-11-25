@@ -9,5 +9,7 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
     css: false,
+    // Deliberately not Kazakhstan time: event times must never depend on the browser zone.
+    env: { TZ: 'America/New_York' },
   },
 });

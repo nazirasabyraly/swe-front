@@ -19,7 +19,7 @@ describe('CreateEventForm', () => {
     await submit();
 
     expect(onContinue).not.toHaveBeenCalled();
-    expect(screen.getByRole('alert')).toHaveTextContent('Fix 10 fields to continue');
+    expect(screen.getByRole('alert')).toHaveTextContent('Fix 12 fields to continue');
     for (const message of [
       'Enter an event title.',
       'Enter a description.',
@@ -28,6 +28,8 @@ describe('CreateEventForm', () => {
       'Enter the city.',
       'Choose the event date.',
       'Choose the start time.',
+      'Choose the end date.',
+      'Choose the end time.',
       'Choose when registration opens.',
       'Choose when registration closes.',
       'Enter the event capacity.',
@@ -126,5 +128,48 @@ describe('CreateEventForm', () => {
       visibility: 'unlisted',
       capacity: '1200',
     });
+  });
+
+  it('keeps the end date following the start date until the organizer changes it', async () => {
+    renderForm();
+    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-10-12' } });
+    expect(screen.getByLabelText('End date')).toHaveValue('2026-10-12');
+
+    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-10-14' } });
+    expect(screen.getByLabelText('End date')).toHaveValue('2026-10-14');
+
+    fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2026-10-15' } });
+    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-10-13' } });
+    expect(screen.getByLabelText('End date')).toHaveValue('2026-10-15');
+  });
+
+  it('rejects an event that ends before it starts', async () => {
+    const { onContinue, user, submit } = renderForm();
+    await fillEventForm(user, { endTime: '18:00' });
+    await submit();
+    expect(onContinue).not.toHaveBeenCalled();
+    expect(screen.getByText('The event must end after it starts.')).toBeInTheDocument();
+  });
+
+  it('defaults to Kazakhstan time and lets the organizer pick another zone', async () => {
+    const { onContinue, user, submit } = renderForm();
+    const zone = screen.getByLabelText('Time zone');
+    expect(zone).toHaveValue('Asia/Almaty');
+    expect(screen.getByRole('option', { name: 'Kazakhstan (Almaty, Astana) (GMT+5)' })).toBeInTheDocument();
+
+    await fillEventForm(user);
+    await user.selectOptions(zone, 'Europe/Moscow');
+    await submit();
+
+    expect(onContinue.mock.calls[0][0]).toMatchObject({ timeZone: 'Europe/Moscow', date: '2026-10-12', startTime: '19:00' });
+  });
+
+  it('limits the refund policy length', async () => {
+    const { onContinue, user, submit } = renderForm();
+    await fillEventForm(user);
+    fireEvent.change(screen.getByLabelText('Refund policy'), { target: { value: 'x'.repeat(2001) } });
+    await submit();
+    expect(onContinue).not.toHaveBeenCalled();
+    expect(screen.getByText('Refund policy must be 2,000 characters or fewer.')).toBeInTheDocument();
   });
 });

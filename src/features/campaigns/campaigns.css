@@ -1,0 +1,131 @@
+/* Promo campaigns — builds on styles/global.css and ticket-types.css. */
+
+.campaign__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.campaign__head p {
+  margin: 2px 0 0;
+  font-size: 16px;
+}
+
+.campaign__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 20px;
+  margin-top: 12px;
+}
+
+@media (max-width: 640px) {
+  .campaign__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.campaign__label {
+  margin: 0 0 4px;
+  font-size: 14px;
+  color: var(--color-muted);
+}
+
+.campaign__copy-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.campaign__code {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.campaign__link {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 15px;
+}
+
+.campaign__copied {
+  min-height: 1.4em;
+  margin: -6px 0 8px;
+  font-size: 15px;
+}
+
+.campaign__facts {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  font-size: 16px;
+}
+
+.campaign__facts dt {
+  font-size: 14px;
+  color: var(--color-muted);
+}
+
+.campaign__facts dd {
+  margin: 0;
+}
+
+/*
+ * Campaign QR: must not be mistaken for an admission ticket QR (SRS 4.14).
+ * Dashed accent frame and a "PROMO" banner; ticket QRs will use a plain solid frame.
+ */
+.campaign-qr {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  width: 196px;
+  margin: 0;
+  padding: 12px;
+  border: 2px dashed var(--color-accent);
+  border-radius: var(--radius-md);
+  background: var(--color-accent-soft);
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .campaign-qr {
+    justify-self: center;
+  }
+}
+
+.campaign-qr__label {
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent-strong);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.campaign-qr img {
+  display: block;
+  background: #fff;
+  border-radius: var(--radius-sm);
+}
+
+.campaign-qr__note {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-accent-strong);
+}
+
+.campaign-form__code {
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+}
+
+.campaign-form__types {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0 24px;
+}

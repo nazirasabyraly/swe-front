@@ -1,11 +1,12 @@
 import { render } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
-import { EventsApiProvider } from '../api/EventsApiContext';
+import { ApiProvider } from '../api/ApiContext';
 import type { EventsApi, OrganizerEvent } from '../api/events';
 import { EditEventPage } from '../features/edit-event/EditEventPage';
 import { EventListView } from '../features/my-events';
 import { now } from '../features/create-event/testUtils';
+import { createTestClient } from './renderApp';
 
 export function makeEvent(overrides: Partial<OrganizerEvent> = {}): OrganizerEvent {
   return {
@@ -16,11 +17,15 @@ export function makeEvent(overrides: Partial<OrganizerEvent> = {}): OrganizerEve
     imageUrls: [],
     format: 'physical',
     venue: { name: 'Almaty Arena', address: 'Momyshuly Ave 1', city: 'Almaty' },
-    startsAt: new Date(2026, 9, 12, 19, 0),
+    // Almaty (UTC+5): 12 Oct 19:00–23:00, registration 25 Sep 10:00 → 12 Oct 17:00.
+    startsAt: new Date('2026-10-12T14:00:00Z'),
+    endsAt: new Date('2026-10-12T18:00:00Z'),
+    timeZone: 'Asia/Almaty',
     visibility: 'public',
-    registrationOpensAt: new Date(2026, 8, 25, 10, 0),
-    registrationClosesAt: new Date(2026, 9, 12, 17, 0),
+    registrationOpensAt: new Date('2026-09-25T05:00:00Z'),
+    registrationClosesAt: new Date('2026-10-12T12:00:00Z'),
     capacity: 1200,
+    refundPolicy: 'Full refunds up to 48 hours before the event.',
     status: 'draft',
     ...overrides,
   };
@@ -50,6 +55,8 @@ export function createFakeApi(events: OrganizerEvent[] = []) {
     }),
     publishEvent: vi.fn((id: string) => setStatus(id, 'published')),
     unpublishEvent: vi.fn((id: string) => setStatus(id, 'draft')),
+    cancelEvent: vi.fn((id: string) => setStatus(id, 'cancelled')),
+    duplicateEvent: vi.fn(async (id: string) => ({ ...(await find(id)), id: `${id}-copy`, status: 'draft' as const })),
   } satisfies EventsApi;
   return api;
 }
@@ -59,18 +66,18 @@ function LocationProbe() {
 }
 
 /** Renders the organizer routes in a memory router with a fake API. */
-export function renderOrganizerApp(api: EventsApi, initialPath = '/events', extra?: ReactElement) {
+export function renderOrganizerApp(api: EventsApi, initialPath = '/organizer/events', extra?: ReactElement) {
   return render(
-    <EventsApiProvider api={api}>
+    <ApiProvider api={createTestClient({ events: api })}>
       <MemoryRouter initialEntries={[initialPath]}>
         <Routes>
-          <Route path="/events" element={<EventListView />} />
-          <Route path="/events/new" element={<h1>Create event</h1>} />
-          <Route path="/events/:id/edit" element={<EditEventPage now={now} />} />
+          <Route path="/organizer/events" element={<EventListView />} />
+          <Route path="/organizer/events/new" element={<h1>Create event</h1>} />
+          <Route path="/organizer/events/:id/edit" element={<EditEventPage now={now} />} />
         </Routes>
         <LocationProbe />
         {extra}
       </MemoryRouter>
-    </EventsApiProvider>,
+    </ApiProvider>,
   );
 }

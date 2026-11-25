@@ -54,8 +54,14 @@
   border-radius: var(--radius-pill);
   background: var(--color-text);
   color: #fff;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
+}
+
+.event-card__status--cancelled {
+  background: var(--color-danger-soft);
+  color: #8f2f21;
+  border: 1px solid #e6b8b0;
 }
 
 .event-card__status--draft {
@@ -77,18 +83,19 @@
 }
 
 .event-card__title {
-  font-size: 20px;
+  font-size: 22px;
   line-height: 1.2;
   overflow-wrap: anywhere;
 }
 
 .event-card__meta {
-  font-size: 14px;
+  font-size: 16px;
   color: var(--color-muted);
 }
 
 .event-card__actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: auto;
   padding-top: 12px;
@@ -110,4 +117,18 @@
 
 .empty-state .btn {
   text-decoration: none;
+}
+
+.list-tabs {
+  margin-bottom: 16px;
+}
+
+.event-card__link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.event-card__link:hover,
+.event-card__link:focus-visible {
+  text-decoration: underline;
 }

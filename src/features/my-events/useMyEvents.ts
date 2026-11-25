@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useEventsApi } from '../../api/EventsApiContext';
+import { useDescribeError } from '../../api/errors';
+import { useEventsApi } from '../../api/ApiContext';
 import type { OrganizerEvent } from '../../api/events';
 
 type State =
@@ -10,6 +11,7 @@ type State =
 /** Loads the signed-in organizer's events, soonest first. */
 export function useMyEvents() {
   const api = useEventsApi();
+  const describeError = useDescribeError();
   const [state, setState] = useState<State>({ status: 'loading' });
 
   const load = useCallback(() => {
@@ -23,16 +25,13 @@ export function useMyEvents() {
       },
       (err: unknown) => {
         if (cancelled) return;
-        setState({
-          status: 'error',
-          message: err instanceof Error ? err.message : 'Could not load your events.',
-        });
+        setState({ status: 'error', message: describeError(err) });
       },
     );
     return () => {
       cancelled = true;
     };
-  }, [api]);
+  }, [api, describeError]);
 
   useEffect(load, [load]);
 

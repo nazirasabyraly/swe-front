@@ -1,20 +1,5 @@
 /* Create event flow — builds on the shared primitives in styles/global.css. */
 
-.form-summary {
-  margin-bottom: 16px;
-}
-
-.fieldset-reset {
-  border: 0;
-  margin: 0;
-  padding: 0;
-}
-
-.fieldset-reset legend {
-  padding: 0;
-  margin-bottom: 6px;
-}
-
 .card__intro {
   margin: -8px 0 16px;
 }
@@ -47,7 +32,7 @@
   justify-content: space-between;
   gap: 8px;
   padding: 6px 10px;
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .image-picker__name {
@@ -79,50 +64,6 @@
 .image-picker__add:has(input:focus-visible) {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
-}
-
-/* Visibility options */
-.option-cards {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-@media (max-width: 640px) {
-  .option-cards {
-    grid-template-columns: 1fr;
-  }
-}
-
-.option-card {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  padding: 12px 14px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-}
-
-.option-card input {
-  margin-top: 4px;
-  accent-color: var(--color-accent);
-}
-
-.option-card:has(input:checked) {
-  border-color: var(--color-accent);
-  background: var(--color-accent-soft);
-}
-
-.option-card__label {
-  display: block;
-  font-weight: 500;
-}
-
-.option-card__description {
-  display: block;
-  font-size: 13px;
-  color: var(--color-muted);
 }
 
 /* Review step */
@@ -201,11 +142,11 @@
   display: block;
   font-weight: 400;
   color: var(--color-muted);
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .event-page__section-title {
-  font-size: 22px;
+  font-size: 24px;
   margin-bottom: 8px;
 }
 
@@ -242,4 +183,50 @@
 .event-page__cta-note {
   text-align: center;
   margin: 8px 0 0;
+}
+
+textarea.input--short {
+  min-height: 90px;
+}
+
+.event-page__refund {
+  margin: 8px 0 16px;
+}
+
+.event-page__refund-title {
+  font-family: var(--font-sans);
+  font-size: 17px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.event-page__tickets-title {
+  font-family: var(--font-sans);
+  font-size: 17px;
+  font-weight: 600;
+  margin: 4px 0 8px;
+}
+
+.event-page__tickets {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.event-page__ticket p {
+  margin: 2px 0 0;
+  font-size: 16px;
+}
+
+.event-page__ticket-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.event-page__ticket-price {
+  color: var(--color-accent);
+  white-space: nowrap;
 }

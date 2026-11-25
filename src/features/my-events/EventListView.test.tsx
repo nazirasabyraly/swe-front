@@ -9,7 +9,8 @@ const published = makeEvent({
   category: 'Music',
   status: 'published',
   visibility: 'unlisted',
-  startsAt: new Date(2026, 9, 5, 17, 0),
+  startsAt: new Date('2026-10-05T12:00:00Z'), // 17:00 in Almaty
+  endsAt: new Date('2026-10-05T15:00:00Z'),
   venue: { name: 'Panfilov Park Stage', address: '', city: 'Almaty' },
   capacity: 310,
 });
@@ -30,7 +31,7 @@ describe('EventListView', () => {
 
     const jazz = card('Jazz on Panfilov');
     expect(within(jazz).getByText('Published')).toBeInTheDocument();
-    expect(within(jazz).getByText(/Mon 05 Oct 2026, 17:00/)).toBeInTheDocument();
+    expect(within(jazz).getByText(/Mon, 05 Oct 2026, 17:00/)).toBeInTheDocument();
     expect(within(jazz).getByText(/Panfilov Park Stage, Almaty/)).toBeInTheDocument();
     expect(within(jazz).getByText(/Unlisted · Capacity 310/)).toBeInTheDocument();
     expect(within(card('Almaty Nights — Vol. 4')).getByText('Draft')).toBeInTheDocument();
@@ -43,7 +44,7 @@ describe('EventListView', () => {
     expect(screen.queryByRole('article')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Create your first event' })).toHaveAttribute(
       'href',
-      '/events/new',
+      '/organizer/events/new',
     );
   });
 
@@ -122,9 +123,17 @@ describe('EventListView', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Edit Jazz on Panfilov' }));
 
-    expect(screen.getByTestId('location')).toHaveTextContent('/events/evt-2/edit');
+    expect(screen.getByTestId('location')).toHaveTextContent('/organizer/events/evt-2/edit');
     expect(await screen.findByRole('heading', { name: 'Edit event' })).toBeInTheDocument();
     expect(api.getEvent).toHaveBeenCalledWith('evt-2');
     expect(await screen.findByLabelText('Event title')).toHaveValue('Jazz on Panfilov');
   });
+
+  it('marks cancelled events and offers no actions on them', async () => {
+    renderOrganizerApp(createFakeApi([makeEvent({ id: 'evt-c', title: 'Rained out', status: 'cancelled' })]));
+    const event = await screen.findByRole('article', { name: 'Rained out' });
+    expect(within(event).getByText('Cancelled')).toBeInTheDocument();
+    expect(within(event).queryByRole('button')).not.toBeInTheDocument();
+  });
 });
+
