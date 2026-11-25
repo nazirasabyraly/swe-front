@@ -1,10 +1,17 @@
 /*
- * Paid-sales activation API client (SRS 4.5). Contract: docs/backend-contract.md,
- * "Paid sales activation". Activation is per event. Every check is a SIMULATION
- * in the academic MVP: no identity provider, bank or card network is involved,
- * and the fee is recorded, not charged.
+ * Paid-sales activation API client (SRS 4.5). Backend: GET /events/:id/activation,
+ * POST /events/:id/activate-paid-sales, POST /organizers/me/verify, POST /organizers/me/payout-accounts.
+ * Every check is a SIMULATION: no identity provider, bank or card network is involved.
+ *
+ * How the app's checklist maps onto the backend's:
+ * - identity = organizer profile complete + verified (the IIN is not sent; the backend has no field for it).
+ * - payout   = a connected sandbox payout account (only the IBAN's last 4 characters are sent).
+ * - fee      = confirmed in the app; the backend records the fee payment when sales are activated.
+ * - terms    = accepted in the app; the backend doesn't track terms.
+ * The fee and terms confirmations are kept in this browser.
  */
-import { json, request } from './http';
+import { ApiError, fromMinor, json, request } from './http';
+import { connectPayoutAccount, getProfileDto, saveProfile } from './organizer';
 
 /**
  * - `not_started` / `in_progress`: paid tickets can't be bought yet.
@@ -34,7 +41,7 @@ export interface PaidSalesStatus {
 export type ActivationItem = keyof PaidSalesStatus['checklist'];
 
 export const PAID_SALES_ERRORS = {
-  checklistIncomplete: 'checklist_incomplete',
+  checklistIncomplete: 'activation_checklist_incomplete',
   suspended: 'paid_sales_suspended',
   invalidIin: 'invalid_iin',
   invalidIban: 'invalid_iban',
@@ -53,49 +60,117 @@ export interface PaidSalesApi {
   activate(eventId: string): Promise<PaidSalesStatus>;
 }
 
-export interface PaidSalesStatusDto {
+/** Backend `ActivationStatusRead`, after camelCasing. */
+interface ActivationDto {
   eventId: string;
-  state: PaidSalesState;
-  simulated: boolean;
-  activationFee: number;
-  termsVersion: string;
-  checklist: {
-    identity: { done: boolean; verifiedName?: string };
-    payout: { done: boolean; accountLast4?: string };
-    fee: { done: boolean; paidAt?: string; reference?: string };
-    terms: { done: boolean; acceptedAt?: string };
-  };
-  activatedAt?: string;
-  suspension?: { reason: string; suspendedAt: string };
+  paidSalesActive: boolean;
+  feeMinor: number;
+  profileComplete: boolean;
+  verified: boolean;
+  payoutAccountConnected: boolean;
+  activationPayment: {
+    status: 'initiated' | 'succeeded' | 'failed';
+    providerRef: string | null;
+    failureReason: string | null;
+    completedAt: string | null;
+  } | null;
 }
 
-const date = (value?: string) => (value ? new Date(value) : undefined);
+const TERMS_VERSION = '2026-01';
 
-export function paidSalesFromDto(dto: PaidSalesStatusDto): PaidSalesStatus {
-  const { fee, terms } = dto.checklist;
-  return {
-    ...dto,
-    checklist: {
-      ...dto.checklist,
-      fee: { ...fee, paidAt: date(fee.paidAt) },
-      terms: { ...terms, acceptedAt: date(terms.acceptedAt) },
+interface LocalSteps {
+  feeConfirmedAt?: string;
+  termsAcceptedAt?: string;
+}
+const stepsKey = (eventId: string) => `biletflow.paidSales.${eventId}`;
+function readSteps(eventId: string): LocalSteps {
+  try {
+    return JSON.parse(localStorage.getItem(stepsKey(eventId)) ?? '{}') as LocalSteps;
+  } catch {
+    return {};
+  }
+}
+function writeSteps(eventId: string, change: LocalSteps) {
+  try {
+    localStorage.setItem(stepsKey(eventId), JSON.stringify({ ...readSteps(eventId), ...change }));
+  } catch {
+    // Storage blocked: the step has to be confirmed again after a reload.
+  }
+}
+
+const base = (eventId: string) => `/events/${encodeURIComponent(eventId)}`;
+
+async function getPaidSales(eventId: string): Promise<PaidSalesStatus> {
+  const [a, profile, accounts] = await Promise.all([
+    request<ActivationDto>(`${base(eventId)}/activation`),
+    getProfileDto(),
+    request<{ providerRef: string; status: string }[]>('/organizers/me/payout-accounts').catch(() => []),
+  ]);
+  const local = readSteps(eventId);
+  const payment = a.activationPayment?.status === 'succeeded' ? a.activationPayment : null;
+  const account = accounts.find((x) => x.status === 'connected');
+  const feePaidAt = payment?.completedAt ?? local.feeConfirmedAt;
+  const checklist: PaidSalesStatus['checklist'] = {
+    identity: { done: a.profileComplete && a.verified, verifiedName: a.verified ? profile?.displayName : undefined },
+    payout: { done: a.payoutAccountConnected, accountLast4: account?.providerRef.slice(-4) },
+    fee: { done: a.paidSalesActive || !!feePaidAt, paidAt: feePaidAt ? new Date(feePaidAt) : undefined, reference: payment?.providerRef ?? undefined },
+    terms: {
+      done: a.paidSalesActive || !!local.termsAcceptedAt,
+      acceptedAt: local.termsAcceptedAt ? new Date(local.termsAcceptedAt) : undefined,
     },
-    activatedAt: date(dto.activatedAt),
-    suspension: dto.suspension && { ...dto.suspension, suspendedAt: new Date(dto.suspension.suspendedAt) },
+  };
+  const anyDone = Object.values(checklist).some((step) => step.done);
+  return {
+    eventId: a.eventId,
+    state: a.paidSalesActive ? 'active' : anyDone ? 'in_progress' : 'not_started',
+    simulated: true,
+    activationFee: fromMinor(a.feeMinor),
+    termsVersion: TERMS_VERSION,
+    checklist,
+    activatedAt: a.paidSalesActive && payment?.completedAt ? new Date(payment.completedAt) : undefined,
   };
 }
-
-const base = (eventId: string) => `/api/events/${encodeURIComponent(eventId)}/paid-sales`;
-const post = async (path: string, body: unknown = {}) =>
-  paidSalesFromDto(await request<PaidSalesStatusDto>(path, json('POST', body)));
 
 export const httpPaidSalesApi: PaidSalesApi = {
-  async getPaidSales(eventId) {
-    return paidSalesFromDto(await request<PaidSalesStatusDto>(base(eventId)));
+  getPaidSales,
+  async verifyIdentity(eventId, { fullName }) {
+    const profile = await getProfileDto();
+    if (!profile || (!profile.contactEmail && !profile.contactPhone)) {
+      const me = await request<{ email: string }>('/me');
+      await saveProfile({
+        displayName: profile?.displayName || fullName,
+        contactEmail: me.email,
+        contactPhone: profile?.contactPhone ?? undefined,
+      });
+    }
+    await request('/organizers/me/verify', { method: 'POST' });
+    return getPaidSales(eventId);
   },
-  verifyIdentity: (eventId, input) => post(`${base(eventId)}/identity`, input),
-  connectPayout: (eventId, input) => post(`${base(eventId)}/payout`, input),
-  payActivationFee: (eventId) => post(`${base(eventId)}/fee`),
-  acceptTerms: (eventId, termsVersion) => post(`${base(eventId)}/terms`, { termsVersion }),
-  activate: (eventId) => post(`${base(eventId)}/activate`),
+  async connectPayout(eventId, { iban }) {
+    await connectPayoutAccount(iban);
+    return getPaidSales(eventId);
+  },
+  async payActivationFee(eventId) {
+    writeSteps(eventId, { feeConfirmedAt: new Date().toISOString() });
+    return getPaidSales(eventId);
+  },
+  async acceptTerms(eventId) {
+    writeSteps(eventId, { termsAcceptedAt: new Date().toISOString() });
+    return getPaidSales(eventId);
+  },
+  async activate(eventId) {
+    const local = readSteps(eventId);
+    if (!local.feeConfirmedAt || !local.termsAcceptedAt) {
+      throw new ApiError(422, { code: PAID_SALES_ERRORS.checklistIncomplete, serverMessage: 'Complete every step first' });
+    }
+    // Records the (simulated) activation fee payment and turns paid sales on.
+    const a = await request<ActivationDto>(`${base(eventId)}/activate-paid-sales`, json('POST', { simulate: 'success' }));
+    if (!a.paidSalesActive) {
+      throw new ApiError(402, {
+        code: 'payment_declined',
+        serverMessage: a.activationPayment?.failureReason ?? 'The activation fee payment failed',
+      });
+    }
+    return getPaidSales(eventId);
+  },
 };

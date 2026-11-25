@@ -1,9 +1,17 @@
 /*
- * Promo campaign API client (SRS 4.14). Contract: docs/backend-contract.md, "Promo campaigns".
- * The server generates the promo code, the trackable link, the QR image and every statistic.
- * The client never calculates a discount: it only shows how a campaign is configured.
+ * Promo campaign API client (SRS 4.14). Backend: GET/POST /events/:id/campaigns,
+ * POST /campaigns/:id/enable|disable, GET /campaigns/:id/qr.png.
+ * The server generates the promo code, the trackable link and the QR image.
+ *
+ * Mapping notes:
+ * - The backend status is only active/disabled; scheduled/expired/exhausted follow from the
+ *   campaign's dates and remaining redemptions.
+ * - Fixed discounts are in minor units on the server.
+ * - Per-campaign results are in event analytics, not here, so `stats` reads zero.
+ * - The QR image needs the bearer token, so it's loaded into an object URL.
  */
-import { json, request } from './http';
+import { fromMinor, json, objectUrl, request, toMinor } from './http';
+import { NO_END, NO_START } from './ticketTypes';
 
 export type DiscountType = 'percent' | 'fixed';
 
@@ -69,32 +77,81 @@ export interface CampaignsApi {
   setCampaignEnabled(eventId: string, id: string, enabled: boolean): Promise<Campaign>;
 }
 
-export interface CampaignDto extends Omit<Campaign, 'validFrom' | 'validUntil' | 'createdAt'> {
-  validFrom: string;
-  validUntil: string;
+/** Backend `CampaignRead`, after camelCasing. */
+export interface CampaignDto {
+  id: string;
+  eventId: string;
+  name: string;
+  discountType: DiscountType;
+  discountValue: number;
+  startsAt: string | null;
+  endsAt: string | null;
+  maxRedemptions: number | null;
+  redemptionCount: number;
+  remaining: number | null;
+  status: 'active' | 'disabled';
+  ticketTypeIds: string[];
+  code: string;
+  qrLink: string;
   createdAt: string;
 }
 
-export const campaignFromDto = (dto: CampaignDto): Campaign => ({
-  ...dto,
-  validFrom: new Date(dto.validFrom),
-  validUntil: new Date(dto.validUntil),
+function campaignStatus(dto: CampaignDto, now = new Date()): CampaignStatus {
+  if (dto.status === 'disabled') return 'disabled';
+  if (dto.startsAt && now < new Date(dto.startsAt)) return 'scheduled';
+  if (dto.endsAt && now > new Date(dto.endsAt)) return 'expired';
+  if (dto.remaining === 0) return 'exhausted';
+  return 'active';
+}
+
+export const campaignFromDto = (dto: CampaignDto, qrImageUrl = ''): Campaign => ({
+  id: dto.id,
+  eventId: dto.eventId,
+  name: dto.name,
+  code: dto.code,
+  discountType: dto.discountType,
+  discountValue: dto.discountType === 'fixed' ? fromMinor(dto.discountValue) : dto.discountValue,
+  validFrom: dto.startsAt ? new Date(dto.startsAt) : NO_START,
+  validUntil: dto.endsAt ? new Date(dto.endsAt) : NO_END,
+  maxRedemptions: dto.maxRedemptions,
+  ticketTypeIds: dto.ticketTypeIds,
+  enabled: dto.status !== 'disabled',
+  status: campaignStatus(dto),
+  link: dto.qrLink,
+  qrImageUrl,
+  qrDownloadUrl: qrImageUrl,
+  stats: { redemptions: dto.redemptionCount, orders: 0, ticketsSold: 0, grossRevenue: 0, discountTotal: 0, netRevenue: 0 },
   createdAt: new Date(dto.createdAt),
 });
 
-const base = (eventId: string) => `/api/events/${encodeURIComponent(eventId)}/campaigns`;
+/** Adds the QR image (protected endpoint) to a campaign. */
+async function withQr(dto: CampaignDto): Promise<Campaign> {
+  const qr = await objectUrl(`/campaigns/${encodeURIComponent(dto.id)}/qr.png`).catch(() => '');
+  return campaignFromDto(dto, qr);
+}
+
+const base = (eventId: string) => `/events/${encodeURIComponent(eventId)}/campaigns`;
 
 export const httpCampaignsApi: CampaignsApi = {
   async listCampaigns(eventId) {
-    return (await request<CampaignDto[]>(base(eventId))).map(campaignFromDto);
+    return Promise.all((await request<CampaignDto[]>(base(eventId))).map(withQr));
   },
   async createCampaign(eventId, input) {
-    const body = { ...input, validFrom: input.validFrom.toISOString(), validUntil: input.validUntil.toISOString() };
-    return campaignFromDto(await request<CampaignDto>(base(eventId), json('POST', body)));
+    const body = {
+      name: input.name,
+      // Omitted -> the server generates one.
+      code: input.code.trim() ? input.code.trim().toUpperCase() : undefined,
+      discountType: input.discountType,
+      discountValue: input.discountType === 'fixed' ? toMinor(input.discountValue) : input.discountValue,
+      startsAt: input.validFrom.toISOString(),
+      endsAt: input.validUntil.toISOString(),
+      maxRedemptions: input.maxRedemptions,
+      ticketTypeIds: input.ticketTypeIds,
+    };
+    return withQr(await request<CampaignDto>(base(eventId), json('POST', body)));
   },
-  async setCampaignEnabled(eventId, id, enabled) {
-    return campaignFromDto(
-      await request<CampaignDto>(`${base(eventId)}/${encodeURIComponent(id)}`, json('PATCH', { enabled })),
-    );
+  async setCampaignEnabled(_eventId, id, enabled) {
+    const path = `/campaigns/${encodeURIComponent(id)}/${enabled ? 'enable' : 'disable'}`;
+    return withQr(await request<CampaignDto>(path, { method: 'POST' }));
   },
 };

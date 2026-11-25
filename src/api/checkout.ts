@@ -1,10 +1,17 @@
 /*
- * Checkout API client (SRS 4.4, 4.6). Contract: docs/backend-contract.md, "Checkout".
- * A reservation holds inventory for a short time; tickets exist only after the server
- * confirms payment (or, for free orders, registration). All amounts come from the server.
+ * Checkout API client (SRS 4.4, 4.6). Backend: POST /orders, POST /orders/:id/pay,
+ * POST /orders/:id/register-free, POST /orders/:id/cancel.
+ *
+ * The backend has no separate reservation: an order is created with every attendee and
+ * holds the tickets until `reserved_until`. Attendee names are entered after the app
+ * "reserves", so the reservation is kept in this browser tab (priced by the server's ticket
+ * prices) and the order is created on confirm. Each attendee gets the buyer's email.
+ * A declined payment keeps the order, and retrying pays the same order again.
  */
-import { json, request } from './http';
-import type { Quote, QuoteItem } from './publicEvents';
+import { fromDto as eventFromDto, type EventDto } from './events';
+import { ApiError, fromMinor, json, orderNumber, request } from './http';
+import type { OrderDto } from './orders';
+import { httpPublicEventsApi, type Quote, type QuoteItem } from './publicEvents';
 
 export type ReservationStatus = 'held' | 'expired' | 'cancelled' | 'completed';
 
@@ -54,7 +61,7 @@ export const CHECKOUT_ERRORS = {
   expired: 'reservation_expired',
   notHeld: 'reservation_not_held',
   declined: 'payment_declined',
-  insufficientInventory: 'insufficient_inventory',
+  insufficientInventory: 'sold_out',
 } as const;
 
 /** Simulation only: lets a demo show the failure path. Ignored by a real payment provider. */
@@ -73,35 +80,155 @@ export interface CheckoutApi {
   confirmReservation(id: string, attendees: Attendee[], simulatedOutcome?: SimulatedOutcome): Promise<OrderSummary>;
 }
 
-export interface ReservationDto extends Omit<Reservation, 'expiresAt' | 'event'> {
+/** Matches the backend's `reservation_ttl_minutes`. */
+const HOLD_MINUTES = 10;
+const STORAGE_PREFIX = 'biletflow.reservation.';
+
+interface StoredReservation extends Omit<Reservation, 'expiresAt' | 'event'> {
   expiresAt: string;
   event: Omit<Reservation['event'], 'startsAt' | 'endsAt'> & { startsAt: string; endsAt: string };
+  items: QuoteItem[];
+  promoCode: string | null;
 }
-export type OrderSummaryDto = Omit<OrderSummary, 'createdAt'> & { createdAt: string };
 
-export const reservationFromDto = (dto: ReservationDto): Reservation => ({
-  ...dto,
-  expiresAt: new Date(dto.expiresAt),
-  event: { ...dto.event, startsAt: new Date(dto.event.startsAt), endsAt: new Date(dto.event.endsAt) },
-});
+function save(r: StoredReservation) {
+  try {
+    sessionStorage.setItem(STORAGE_PREFIX + r.id, JSON.stringify(r));
+  } catch {
+    // Storage blocked: the reservation only lives until the page is reloaded.
+  }
+  memory.set(r.id, r);
+}
 
-const one = (id: string) => `/api/checkout/reservations/${encodeURIComponent(id)}`;
+const memory = new Map<string, StoredReservation>();
+
+function load(id: string): StoredReservation {
+  let stored = memory.get(id);
+  if (!stored) {
+    try {
+      const raw = sessionStorage.getItem(STORAGE_PREFIX + id);
+      if (raw) stored = JSON.parse(raw) as StoredReservation;
+    } catch {
+      // ignore
+    }
+  }
+  if (!stored) throw new ApiError(404, { code: 'reservation_not_found', serverMessage: 'Reservation not found' });
+  return stored;
+}
+
+function toReservation(r: StoredReservation): Reservation {
+  const { items: _items, promoCode: _promoCode, ...rest } = r;
+  const expiresAt = new Date(r.expiresAt);
+  const status = r.status === 'held' && expiresAt < new Date() ? 'expired' : r.status;
+  return {
+    ...rest,
+    status,
+    expiresAt,
+    event: { ...r.event, startsAt: new Date(r.event.startsAt), endsAt: new Date(r.event.endsAt) },
+  };
+}
+
+interface PaymentDto {
+  status: 'initiated' | 'succeeded' | 'failed';
+  failureReason: string | null;
+}
+
+const orderPath = (id: string) => `/orders/${encodeURIComponent(id)}`;
 
 export const httpCheckoutApi: CheckoutApi = {
   async createReservation(eventId, items, promoCode) {
-    return reservationFromDto(
-      await request<ReservationDto>('/api/checkout/reservations', json('POST', { eventId, items, promoCode })),
-    );
+    const [quote, eventDto] = await Promise.all([
+      httpPublicEventsApi.quote(eventId, items, promoCode),
+      request<EventDto>(`/events/${encodeURIComponent(eventId)}`),
+    ]);
+    const event = eventFromDto(eventDto);
+    const stored: StoredReservation = {
+      id: crypto.randomUUID(),
+      status: 'held',
+      expiresAt: new Date(Date.now() + HOLD_MINUTES * 60_000).toISOString(),
+      event: {
+        id: event.id,
+        title: event.title,
+        startsAt: event.startsAt.toISOString(),
+        endsAt: event.endsAt.toISOString(),
+        timeZone: event.timeZone,
+        venue: { name: event.venue.name, city: event.venue.city },
+        refundPolicy: event.refundPolicy,
+      },
+      quote,
+      paymentsSimulated: true,
+      items,
+      promoCode,
+    };
+    save(stored);
+    return toReservation(stored);
   },
   async getReservation(id) {
-    return reservationFromDto(await request<ReservationDto>(one(id)));
+    return toReservation(load(id));
   },
   async cancelReservation(id) {
-    return reservationFromDto(await request<ReservationDto>(one(id), { method: 'DELETE' }));
+    const stored = load(id);
+    if (stored.orderId && stored.status === 'held') {
+      await request(`${orderPath(stored.orderId)}/cancel`, { method: 'POST' });
+    }
+    if (stored.status === 'held') stored.status = 'cancelled';
+    save(stored);
+    return toReservation(stored);
   },
   async confirmReservation(id, attendees, simulatedOutcome) {
-    const dto = await request<OrderSummaryDto>(`${one(id)}/confirm`, json('POST', { attendees, simulatedOutcome }));
-    return { ...dto, createdAt: new Date(dto.createdAt) };
+    const stored = load(id);
+    if (toReservation(stored).status !== 'held') {
+      throw new ApiError(409, { code: CHECKOUT_ERRORS.expired, serverMessage: 'The reservation has expired' });
+    }
+
+    let order: OrderDto;
+    if (stored.orderId) {
+      order = await request<OrderDto>(orderPath(stored.orderId));
+    } else {
+      const me = await request<{ email: string }>('/me');
+      // Backend wants attendees in item order, one per ticket — the same order the app uses.
+      order = await request<OrderDto>(
+        '/orders',
+        json('POST', {
+          eventId: stored.event.id,
+          items: stored.items.map(({ ticketTypeId, quantity }) => ({ ticketTypeId, quantity })),
+          attendees: attendees.map((a) => ({ fullName: a.name, email: me.email })),
+          promoCode: stored.promoCode ?? undefined,
+        }),
+      );
+      stored.orderId = order.id;
+      if (order.reservedUntil) stored.expiresAt = order.reservedUntil;
+      save(stored);
+    }
+
+    if (order.status === 'pending') {
+      if (order.totalMinor === 0) {
+        order = await request<OrderDto>(`${orderPath(order.id)}/register-free`, { method: 'POST' });
+      } else {
+        const simulate = simulatedOutcome === 'declined' ? 'fail' : 'success';
+        const payment = await request<PaymentDto>(`${orderPath(order.id)}/pay`, json('POST', { simulate }));
+        if (payment.status !== 'succeeded') {
+          throw new ApiError(402, {
+            code: CHECKOUT_ERRORS.declined,
+            serverMessage: payment.failureReason ?? 'The payment was declined',
+          });
+        }
+        order = await request<OrderDto>(orderPath(order.id));
+      }
+    }
+
+    stored.status = 'completed';
+    save(stored);
+    return {
+      id: order.id,
+      number: orderNumber(order.id),
+      eventId: order.eventId,
+      status: order.totalMinor === 0 ? 'confirmed' : 'paid',
+      total: fromMinor(order.totalMinor),
+      ticketCount: order.items.length,
+      paymentsSimulated: true,
+      createdAt: new Date(order.createdAt),
+    };
   },
 };
 

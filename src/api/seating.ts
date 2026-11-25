@@ -1,9 +1,11 @@
 /*
- * Assigned seating (SRS 4.3.1). Contract: docs/backend-contract.md, "Assigned seating".
- * Layouts are predefined by the platform; organizers choose one and map its price categories to
- * ticket types. Seat holds and the "never sell a seat twice" guarantee are the server's job.
+ * Assigned seating (SRS 4.3.1). Backend: the event's `seating_mode` / `venue_id`, and
+ * GET /events/:id/seatmap (not implemented on the backend yet).
+ * The backend has no venue-layout catalog or price-category mapping, so choosing a layout
+ * isn't supported; switching an event back to general admission is.
  */
-import { json, request } from './http';
+import type { EventDto } from './events';
+import { json, notSupported, request } from './http';
 
 export type SeatStatus = 'available' | 'held' | 'sold' | 'unavailable';
 
@@ -62,13 +64,60 @@ export interface SeatingApi {
   getSeatMap(eventId: string): Promise<SeatMap>;
 }
 
-const ev = (id: string) => `/api/events/${encodeURIComponent(id)}`;
+const ev = (id: string) => `/events/${encodeURIComponent(id)}`;
+
+interface SeatMapDto {
+  venueName: string;
+  sections: {
+    id: string;
+    name: string;
+    rows: {
+      label: string;
+      seats: { id: string; seatNumber: string; priceCategory: string | null; isAccessible: boolean; status: 'available' | 'held' | 'mine' | 'sold' }[];
+    }[];
+  }[];
+}
+
+const EMPTY_GA_MAP: SeatMap = { mode: 'general_admission', layoutName: '', categories: [], sections: [] };
 
 export const httpSeatingApi: SeatingApi = {
-  listLayouts: () => request<VenueLayout[]>('/api/venue-layouts'),
-  getSeating: (eventId) => request<SeatingConfig>(`${ev(eventId)}/seating`),
-  updateSeating: (eventId, config) => request<SeatingConfig>(`${ev(eventId)}/seating`, json('PUT', config)),
-  getSeatMap: (eventId) => request<SeatMap>(`/api/public/events/${encodeURIComponent(eventId)}/seat-map`),
+  listLayouts: async () => notSupported('Venue layouts'),
+  async getSeating(eventId) {
+    const event = await request<EventDto>(ev(eventId));
+    return { mode: event.seatingMode, layoutId: event.venueId, categoryTicketTypes: {} };
+  },
+  async updateSeating(eventId, config) {
+    if (config.mode === 'assigned') notSupported('Assigned seating');
+    const event = await request<EventDto>(ev(eventId), json('PATCH', { seatingMode: 'general_admission', venueId: null }));
+    return { mode: event.seatingMode, layoutId: event.venueId, categoryTicketTypes: {} };
+  },
+  async getSeatMap(eventId) {
+    const event = await request<EventDto>(ev(eventId));
+    if (event.seatingMode === 'general_admission') return EMPTY_GA_MAP;
+    const map = await request<SeatMapDto>(`${ev(eventId)}/seatmap`);
+    const categories = [...new Set(map.sections.flatMap((s) => s.rows.flatMap((r) => r.seats.map((x) => x.priceCategory ?? ''))))];
+    return {
+      mode: 'assigned',
+      layoutName: map.venueName,
+      categories: categories.map((c) => ({ id: c, label: c, ticketTypeId: null })),
+      sections: map.sections.map((section) => ({
+        id: section.id,
+        name: section.name,
+        rows: section.rows.map((row) => ({
+          label: row.label,
+          seats: row.seats.map((seat) => ({
+            id: seat.id,
+            number: seat.seatNumber,
+            category: seat.priceCategory ?? '',
+            accessible: seat.isAccessible,
+            status: seat.status === 'mine' ? 'held' : seat.status,
+            ticketTypeId: null,
+            price: null,
+          })),
+        })),
+      })),
+    };
+  },
 };
 
 /** "Parterre · Row A · Seat 3" */

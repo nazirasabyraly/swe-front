@@ -1,54 +1,73 @@
-import { httpPaidSalesApi, type PaidSalesStatusDto } from './paidSales';
+import { httpPaidSalesApi } from './paidSales';
 
-const dto: PaidSalesStatusDto = {
-  eventId: 'evt-1',
-  state: 'suspended',
-  simulated: true,
-  activationFee: 9900,
-  termsVersion: '2026-09',
-  checklist: {
-    identity: { done: true, verifiedName: 'Aigerim Sadykova' },
-    payout: { done: true, accountLast4: '4417' },
-    fee: { done: true, paidAt: '2026-09-20T08:00:00.000Z', reference: 'SIM-1' },
-    terms: { done: true, acceptedAt: '2026-09-20T08:05:00.000Z' },
-  },
-  activatedAt: '2026-09-20T08:06:00.000Z',
-  suspension: { reason: 'Chargeback spike', suspendedAt: '2026-10-01T10:00:00.000Z' },
-};
+const activation = (over: Record<string, unknown> = {}) => ({
+  event_id: 'evt-1',
+  paid_sales_active: false,
+  fee_minor: 500_000,
+  currency: 'KZT',
+  profile_complete: true,
+  verified: true,
+  payout_account_connected: false,
+  activation_payment: null,
+  ...over,
+});
 
-const jsonResponse = (body: unknown) =>
-  new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
+const jsonResponse = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
 describe('httpPaidSalesApi', () => {
   const fetchMock = vi.fn<typeof fetch>();
+  let state = activation();
   beforeEach(() => {
+    localStorage.clear();
+    state = activation();
     fetchMock.mockReset();
-    fetchMock.mockImplementation(async () => jsonResponse(dto));
+    fetchMock.mockImplementation(async (url) => {
+      const path = String(url);
+      if (path.endsWith('/activation')) return jsonResponse(state);
+      if (path.endsWith('/organizers/me')) return jsonResponse({ display_name: 'Steppe Sound', contact_email: 'a@b.kz', contact_phone: null });
+      if (path.endsWith('/payout-accounts')) return jsonResponse([{ provider_ref: 'sandbox_1234', status: 'connected' }]);
+      if (path.endsWith('/activate-paid-sales')) {
+        state = activation({ paid_sales_active: true, payout_account_connected: true });
+        return jsonResponse(state);
+      }
+      return jsonResponse({});
+    });
     vi.stubGlobal('fetch', fetchMock);
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it('loads the status for one event and parses its dates', async () => {
-    const status = await httpPaidSalesApi.getPaidSales('evt 1');
-
-    expect(fetchMock.mock.calls[0][0]).toBe('/api/events/evt%201/paid-sales');
-    expect(status.checklist.fee.paidAt).toEqual(new Date('2026-09-20T08:00:00.000Z'));
-    expect(status.checklist.terms.acceptedAt).toEqual(new Date('2026-09-20T08:05:00.000Z'));
-    expect(status.activatedAt).toEqual(new Date('2026-09-20T08:06:00.000Z'));
-    expect(status.suspension).toEqual({ reason: 'Chargeback spike', suspendedAt: new Date('2026-10-01T10:00:00.000Z') });
+  it('maps the backend checklist', async () => {
+    const status = await httpPaidSalesApi.getPaidSales('evt-1');
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/events/evt-1/activation');
+    expect(status).toMatchObject({
+      state: 'in_progress',
+      activationFee: 5000,
+      checklist: {
+        identity: { done: true, verifiedName: 'Steppe Sound' },
+        payout: { done: false },
+        fee: { done: false },
+        terms: { done: false },
+      },
+    });
   });
 
-  it.each([
-    ['verifyIdentity', () => httpPaidSalesApi.verifyIdentity('evt-1', { fullName: 'A', iin: '000000000000' }), '/identity', { fullName: 'A', iin: '000000000000' }],
-    ['connectPayout', () => httpPaidSalesApi.connectPayout('evt-1', { accountHolder: 'A', iban: 'KZ00' }), '/payout', { accountHolder: 'A', iban: 'KZ00' }],
-    ['payActivationFee', () => httpPaidSalesApi.payActivationFee('evt-1'), '/fee', {}],
-    ['acceptTerms', () => httpPaidSalesApi.acceptTerms('evt-1', '2026-09'), '/terms', { termsVersion: '2026-09' }],
-    ['activate', () => httpPaidSalesApi.activate('evt-1'), '/activate', {}],
-  ] as const)('%s posts to its endpoint', async (_name, call, suffix, body) => {
-    await call();
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe(`/api/events/evt-1/paid-sales${suffix}`);
-    expect(init?.method).toBe('POST');
-    expect(JSON.parse(init?.body as string)).toEqual(body);
+  it('sends only a sandbox reference for the payout account', async () => {
+    await httpPaidSalesApi.connectPayout('evt-1', { accountHolder: 'A', iban: 'KZ86125KZT5004100100' });
+    const call = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')!;
+    expect(call[0]).toBe('/api/v1/organizers/me/payout-accounts');
+    expect(JSON.parse(call[1]?.body as string)).toEqual({ provider_ref: 'sandbox_0100' });
+  });
+
+  it('activates after the fee and terms are confirmed in the app', async () => {
+    await expect(httpPaidSalesApi.activate('evt-1')).rejects.toMatchObject({ code: 'activation_checklist_incomplete' });
+
+    await httpPaidSalesApi.payActivationFee('evt-1');
+    await httpPaidSalesApi.acceptTerms('evt-1', '2026-01');
+    const status = await httpPaidSalesApi.activate('evt-1');
+
+    const call = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/activate-paid-sales'))!;
+    expect(JSON.parse(call[1]?.body as string)).toEqual({ simulate: 'success' });
+    expect(status.state).toBe('active');
   });
 });

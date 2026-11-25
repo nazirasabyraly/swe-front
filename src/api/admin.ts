@@ -1,9 +1,14 @@
 /*
- * Platform administration (SRS 4.5, 4.12) and event reports. Contract: docs/backend-contract.md, "Administration".
- * Only `platform_admin` may call the /api/admin endpoints; `reportEvent` is for any signed-in user.
+ * Platform administration (SRS 4.5, 4.12) and event reports. Backend: /admin/*.
+ * Only `platform_admin` may call the /admin endpoints; `reportEvent` is for any signed-in user.
+ *
+ * Not on the backend yet (they fail with a "not supported" error): event reports,
+ * suspending paid sales only, and promo activity. Search covers users and events; the backend
+ * can't search orders or payments. Only activation fees and ticket payments exist (no refund
+ * records). Settings hold only the activation fee.
  */
 import type { Role } from './auth';
-import { json, request } from './http';
+import { fromMinor, json, notSupported, orderNumber, request, toMinor, type Page } from './http';
 import type { PaidSalesState } from './paidSales';
 
 export interface AdminUser {
@@ -121,34 +126,147 @@ export interface AdminApi {
   reportEvent(eventId: string, input: { reason: ReportReason; details: string }): Promise<void>;
 }
 
-// ---- HTTP: dates arrive as ISO strings; revive the known date fields ----
+// ---- HTTP (backend schemas, after camelCasing) ----
 
-const DATE_KEYS = new Set(['startsAt', 'createdAt', 'activatedAt']);
-function revive<T>(value: unknown): T {
-  return JSON.parse(JSON.stringify(value), (key, v) => (DATE_KEYS.has(key) && typeof v === 'string' ? new Date(v) : v)) as T;
+interface AdminUserDto {
+  id: string;
+  email: string;
+  fullName: string;
+  status: 'active' | 'suspended';
+  roles: Role[];
 }
-const get = async <T,>(path: string) => revive<T>(await request<unknown>(path));
-const send = async <T,>(path: string, method: string, body: unknown) => revive<T>(await request<unknown>(path, json(method, body)));
+interface AdminEventDto {
+  id: string;
+  title: string;
+  organizerName: string;
+  status: AdminEvent['status'];
+  startsAt: string;
+  paidSalesActive: boolean;
+  suspendedAt: string | null;
+}
+interface PaymentDto {
+  id: string;
+  orderId: string | null;
+  eventId: string | null;
+  purpose: 'ticket_purchase' | 'activation_fee';
+  amountMinor: number;
+  status: 'initiated' | 'succeeded' | 'failed';
+  providerRef: string | null;
+  isSimulated: boolean;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+const userFromDto = (u: AdminUserDto): AdminUser => ({ id: u.id, name: u.fullName, email: u.email, roles: u.roles, status: u.status });
+const eventFromDto = (e: AdminEventDto): AdminEvent => ({
+  id: e.id,
+  title: e.title,
+  organizerName: e.organizerName,
+  status: e.status,
+  startsAt: new Date(e.startsAt),
+  paidSales: e.paidSalesActive ? 'active' : 'not_started',
+  suspended: e.suspendedAt !== null,
+  openReports: 0,
+});
+
 const q = (params: Record<string, string | undefined>) => {
   const s = new URLSearchParams(Object.entries(params).filter(([, v]) => v) as [string, string][]).toString();
   return s ? `?${s}` : '';
 };
 
+const listEventDtos = async (query?: string) =>
+  (await request<Page<AdminEventDto>>(`/admin/events${q({ q: query, limit: '100' })}`)).items;
+
+const listPaymentDtos = async (purpose?: PaymentDto['purpose']) =>
+  (await request<Page<PaymentDto>>(`/admin/payments${q({ purpose, limit: '100' })}`)).items;
+
+const KIND: Record<PaymentDto['purpose'], PaymentKind> = { ticket_purchase: 'charge', activation_fee: 'activation_fee' };
+
+async function eventsById() {
+  return new Map((await listEventDtos()).map((e) => [e.id, e]));
+}
+
+const userAction = (id: string, suspended: boolean, reason: string) =>
+  request<AdminUserDto>(
+    `/admin/users/${encodeURIComponent(id)}/${suspended ? 'suspend' : 'unsuspend'}`,
+    suspended ? json('POST', { reason }) : { method: 'POST' },
+  );
+const eventAction = (id: string, suspended: boolean, reason: string) =>
+  request<AdminEventDto>(
+    `/admin/events/${encodeURIComponent(id)}/${suspended ? 'suspend' : 'unsuspend'}`,
+    suspended ? json('POST', { reason }) : { method: 'POST' },
+  );
+
 export const httpAdminApi: AdminApi = {
-  search: (query) => get(`/api/admin/search${q({ q: query })}`),
-  listEvents: () => get('/api/admin/events'),
-  setUserSuspended: (id, suspended, reason) => send(`/api/admin/users/${encodeURIComponent(id)}/suspension`, 'PUT', { suspended, reason }),
-  setEventSuspended: (id, suspended, reason) => send(`/api/admin/events/${encodeURIComponent(id)}/suspension`, 'PUT', { suspended, reason }),
-  setPaidSalesSuspended: (id, suspended, reason) =>
-    send(`/api/admin/events/${encodeURIComponent(id)}/paid-sales/suspension`, 'PUT', { suspended, reason }),
-  listReports: () => get('/api/admin/reports'),
-  resolveReport: (id, outcome) => send(`/api/admin/reports/${encodeURIComponent(id)}`, 'PATCH', { status: outcome }),
-  listActivations: () => get('/api/admin/activations'),
-  listPayments: ({ status, kind }) => get(`/api/admin/payments${q({ status, kind })}`),
-  listPromoActivity: () => get('/api/admin/promo-activity'),
-  getSettings: () => get('/api/admin/settings'),
-  updateSettings: (settings) => send('/api/admin/settings', 'PUT', settings),
-  async reportEvent(eventId, input) {
-    await request(`/api/public/events/${encodeURIComponent(eventId)}/reports`, json('POST', input));
+  async search(query) {
+    const [users, events] = await Promise.all([
+      request<Page<AdminUserDto>>(`/admin/users${q({ q: query, limit: '50' })}`),
+      listEventDtos(query),
+    ]);
+    return { users: users.items.map(userFromDto), events: events.map(eventFromDto), orders: [], payments: [] };
   },
+  async listEvents() {
+    return (await listEventDtos()).map(eventFromDto);
+  },
+  async setUserSuspended(id, suspended, reason) {
+    return userFromDto(await userAction(id, suspended, reason));
+  },
+  async setEventSuspended(id, suspended, reason) {
+    return eventFromDto(await eventAction(id, suspended, reason));
+  },
+  setPaidSalesSuspended: async () => notSupported('Suspending paid sales only'),
+  listReports: async () => notSupported('Event reports'),
+  resolveReport: async () => notSupported('Event reports'),
+  async listActivations() {
+    const [payments, events] = await Promise.all([
+      request<Page<PaymentDto>>('/admin/activation-records?limit=100'),
+      eventsById(),
+    ]);
+    return payments.items.map((p) => {
+      const event = p.eventId ? events.get(p.eventId) : undefined;
+      return {
+        eventId: p.eventId ?? '',
+        eventTitle: event?.title ?? '',
+        organizerName: event?.organizerName ?? '',
+        state: event?.paidSalesActive ? 'active' : 'in_progress',
+        feeAmount: fromMinor(p.amountMinor),
+        feeReference: p.providerRef,
+        activatedAt: p.status === 'succeeded' && p.completedAt ? new Date(p.completedAt) : null,
+        suspensionReason: null,
+        simulated: p.isSimulated,
+      };
+    });
+  },
+  async listPayments({ status, kind }) {
+    if (kind === 'refund') return [];
+    const purpose = kind === 'charge' ? 'ticket_purchase' : kind;
+    const [payments, events] = await Promise.all([listPaymentDtos(purpose), eventsById()]);
+    return payments
+      .filter((p) => !status || p.status === status)
+      .map((p) => ({
+        id: p.id,
+        reference: p.providerRef ?? p.id,
+        kind: KIND[p.purpose],
+        // `initiated` (never completed) is shown as failed.
+        status: p.status === 'succeeded' ? 'succeeded' : 'failed',
+        amount: fromMinor(p.amountMinor),
+        orderNumber: p.orderId ? orderNumber(p.orderId) : null,
+        eventTitle: (p.eventId && events.get(p.eventId)?.title) || '',
+        createdAt: new Date(p.createdAt),
+        simulated: p.isSimulated,
+      }));
+  },
+  listPromoActivity: async () => notSupported('Promo activity'),
+  async getSettings() {
+    const s = await request<{ activationFeeMinor: number }>('/admin/settings');
+    return { activationFee: fromMinor(s.activationFeeMinor), processingFeePercent: 0, holdMinutes: 10, supportEmail: '' };
+  },
+  async updateSettings(settings) {
+    const s = await request<{ activationFeeMinor: number }>(
+      '/admin/settings',
+      json('PATCH', { activationFeeMinor: toMinor(settings.activationFee) }),
+    );
+    return { ...settings, activationFee: fromMinor(s.activationFeeMinor) };
+  },
+  reportEvent: async () => notSupported('Reporting events'),
 };
